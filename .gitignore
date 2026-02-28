@@ -1,3 +1,4 @@
 internal/static/dist/**/*
 coverage.out
 mo
+.idea

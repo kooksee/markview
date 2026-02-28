@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -39,6 +40,7 @@ and automatically refreshes the browser when files are saved.
 Examples:
   mo README.md                          Open a single file
   mo README.md CHANGELOG.md docs/*.md   Open multiple files
+  mo docs/                              Open all Markdown files under a directory
   mo spec.md --target design            Open in a named group
   mo draft.md --port 6276               Use a different port
 
@@ -68,6 +70,10 @@ Groups:
 Live-Reload:
   mo watches all opened files for changes using filesystem notifications.
   When a file is saved, the browser automatically re-renders the content.
+
+Directory Mode:
+	You can pass a directory path and mo will recursively include Markdown files
+	under it.
 
 Supported Markdown Features:
   - GitHub Flavored Markdown (tables, task lists, strikethrough, autolinks)
@@ -110,6 +116,8 @@ func run(cmd *cobra.Command, args []string) error {
 
 func resolveFiles(args []string) ([]string, error) {
 	var files []string
+	seen := make(map[string]struct{})
+	anyExplicitFile := false
 	for _, arg := range args {
 		absPath, err := filepath.Abs(arg)
 		if err != nil {
@@ -118,11 +126,61 @@ func resolveFiles(args []string) ([]string, error) {
 		if stat, err := os.Stat(absPath); err != nil {
 			return nil, fmt.Errorf("file not found: %s", absPath)
 		} else if stat.IsDir() {
-			return nil, fmt.Errorf("%s is a directory", absPath)
+			dirFiles, err := collectMarkdownFiles(absPath)
+			if err != nil {
+				return nil, err
+			}
+			for _, f := range dirFiles {
+				if _, ok := seen[f]; ok {
+					continue
+				}
+				seen[f] = struct{}{}
+				files = append(files, f)
+			}
+			continue
 		}
+		anyExplicitFile = true
+		if _, ok := seen[absPath]; ok {
+			continue
+		}
+		seen[absPath] = struct{}{}
 		files = append(files, absPath)
 	}
+	if len(files) == 0 && len(args) > 0 && !anyExplicitFile {
+		return nil, fmt.Errorf("no markdown files found in the provided directories")
+	}
 	return files, nil
+}
+
+func collectMarkdownFiles(dir string) ([]string, error) {
+	var files []string
+	err := filepath.WalkDir(dir, func(path string, d os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if d.IsDir() {
+			return nil
+		}
+		if !isMarkdownFile(path) {
+			return nil
+		}
+		files = append(files, path)
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to scan directory %s: %w", dir, err)
+	}
+	return files, nil
+}
+
+func isMarkdownFile(path string) bool {
+	ext := strings.ToLower(filepath.Ext(path))
+	switch ext {
+	case ".md", ".markdown", ".mdown", ".mkd":
+		return true
+	default:
+		return false
+	}
 }
 
 func tryAddToExisting(addr string, files []string) bool {
