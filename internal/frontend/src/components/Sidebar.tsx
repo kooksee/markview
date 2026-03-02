@@ -135,8 +135,11 @@ function SortableFileItem({
                   className={`${MENU_ITEM_CLASS} !pl-9`}
                   onClick={() => onMoveToGroup(file.id, g.name)}
                 >
-                  <svg className="size-4 shrink-0" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                    <rect x="6" y="6" width="12" height="12" rx="2" />
+                  <svg className="size-4 shrink-0" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
+                    <rect x="3" y="3" width="7.5" height="7.5" rx="1.5" />
+                    <rect x="13.5" y="3" width="7.5" height="7.5" rx="1.5" />
+                    <rect x="3" y="13.5" width="7.5" height="7.5" rx="1.5" />
+                    <rect x="13.5" y="13.5" width="7.5" height="7.5" rx="1.5" />
                   </svg>
                   {g.name === "default" ? "(default)" : g.name}
                 </button>
