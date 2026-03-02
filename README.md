@@ -80,6 +80,10 @@ The sidebar supports flat and tree view modes. Flat view shows file names only, 
 |------|------|
 | ![Flat view](images/sidebar-flat.png) | ![Tree view](images/sidebar-tree.png) |
 
+### Server restart
+
+Click the restart button (bottom-right corner) to restart the `mo` server process. The current session — all open files and groups — is preserved across the restart. This is useful when you have updated the `mo` binary and want to pick up the new version without re-opening your files.
+
 ### Flags
 
 | Flag | Short | Default | Description |
