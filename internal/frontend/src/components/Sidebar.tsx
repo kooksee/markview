@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   DndContext,
   closestCenter,
@@ -15,7 +15,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import type { FileEntry, Group } from "../hooks/useApi";
-import { removeFile } from "../hooks/useApi";
+import { removeFile, moveFile } from "../hooks/useApi";
 import { buildFileUrl } from "../utils/groups";
 
 const MENU_ITEM_CLASS =
@@ -39,9 +39,11 @@ interface SortableFileItemProps {
   file: FileEntry;
   isActive: boolean;
   menuOpenId: number | null;
+  otherGroups: Group[];
   onFileSelect: (id: number) => void;
   onMenuToggle: (id: number) => void;
   onOpenInNewTab: (id: number) => void;
+  onMoveToGroup: (id: number, group: string) => void;
   onRemove: (id: number) => void;
   menuRef: React.RefObject<HTMLDivElement | null>;
 }
@@ -50,9 +52,11 @@ function SortableFileItem({
   file,
   isActive,
   menuOpenId,
+  otherGroups,
   onFileSelect,
   onMenuToggle,
   onOpenInNewTab,
+  onMoveToGroup,
   onRemove,
   menuRef,
 }: SortableFileItemProps) {
@@ -115,6 +119,31 @@ function SortableFileItem({
             </svg>
             Open in new tab
           </button>
+          {otherGroups.length > 0 && (
+            <>
+              <div className="border-t border-gh-border my-1" />
+              <div className="px-3 py-1.5 text-sm text-gh-text-secondary flex items-center gap-2">
+                <svg className="size-4" viewBox="0 0 16 16" fill="currentColor">
+                  <path d="M12.25 2a.75.75 0 0 1 0 1.5H3.75a.25.25 0 0 0-.25.25v8.5a.25.25 0 0 0 .25.25h8.5a.75.75 0 0 0 0 1.5H3.75A1.75 1.75 0 0 1 2 12.25V3.75A1.75 1.75 0 0 1 3.75 2Z" />
+                  <path d="M12 5l3.5 3-3.5 3ZM8.75 7.25a.75.75 0 0 0 0 1.5H12.5V7.25H8.75Z" />
+                </svg>
+                Move to...
+              </div>
+              {otherGroups.map((g) => (
+                <button
+                  key={g.name}
+                  className={`${MENU_ITEM_CLASS} !pl-9`}
+                  onClick={() => onMoveToGroup(file.id, g.name)}
+                >
+                  <svg className="size-4 shrink-0" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                    <rect x="6" y="6" width="12" height="12" rx="2" />
+                  </svg>
+                  {g.name === "default" ? "(default)" : g.name}
+                </button>
+              ))}
+            </>
+          )}
+          <div className="border-t border-gh-border my-1" />
           <button
             className={MENU_ITEM_CLASS}
             onClick={() => onRemove(file.id)}
@@ -224,6 +253,28 @@ export function Sidebar({
     [activeGroup],
   );
 
+  const otherGroups = useMemo(() => {
+    return [...groups]
+      .filter((g) => g.name !== activeGroup)
+      .sort((a, b) => {
+        if (a.name === "default") return 1;
+        if (b.name === "default") return -1;
+        return a.name.localeCompare(b.name);
+      });
+  }, [groups, activeGroup]);
+
+  const handleMoveToGroup = useCallback(
+    async (id: number, group: string) => {
+      setMenuOpenId(null);
+      try {
+        await moveFile(id, group);
+      } catch (err) {
+        window.alert(err instanceof Error ? err.message : "Failed to move file");
+      }
+    },
+    [],
+  );
+
   const handleRemove = useCallback((id: number) => {
     setMenuOpenId(null);
     removeFile(id);
@@ -254,9 +305,11 @@ export function Sidebar({
                 file={f}
                 isActive={f.id === activeFileId}
                 menuOpenId={menuOpenId}
+                otherGroups={otherGroups}
                 onFileSelect={onFileSelect}
                 onMenuToggle={handleMenuToggle}
                 onOpenInNewTab={handleOpenInNewTab}
+                onMoveToGroup={handleMoveToGroup}
                 onRemove={handleRemove}
                 menuRef={menuRef}
               />

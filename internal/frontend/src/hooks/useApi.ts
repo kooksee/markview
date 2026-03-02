@@ -61,6 +61,18 @@ export async function reorderFiles(
   if (!res.ok) throw new Error("Failed to reorder files");
 }
 
+export async function moveFile(id: number, group: string): Promise<void> {
+  const res = await fetch(`/_/api/files/${id}/group`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ group }),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(text.trim() || "Failed to move file");
+  }
+}
+
 export async function restartServer(): Promise<void> {
   const res = await fetch("/_/api/restart", { method: "POST" });
   if (!res.ok) throw new Error("Failed to restart server");

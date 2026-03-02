@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { fetchGroups, fetchFileContent, openRelativeFile, reorderFiles } from "./useApi";
+import { fetchGroups, fetchFileContent, openRelativeFile, reorderFiles, moveFile } from "./useApi";
 
 beforeEach(() => {
   vi.restoreAllMocks();
@@ -112,5 +112,40 @@ describe("reorderFiles", () => {
     }));
 
     await expect(reorderFiles("default", [1])).rejects.toThrow("Failed to reorder files");
+  });
+});
+
+describe("moveFile", () => {
+  it("sends PUT with correct URL and body", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: true,
+    }));
+
+    await moveFile(5, "docs");
+    expect(fetch).toHaveBeenCalledWith("/_/api/files/5/group", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ group: "docs" }),
+    });
+  });
+
+  it("throws with server error message", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: false,
+      status: 409,
+      text: () => Promise.resolve('file "a.md" already exists in group "docs"\n'),
+    }));
+
+    await expect(moveFile(1, "docs")).rejects.toThrow('file "a.md" already exists in group "docs"');
+  });
+
+  it("throws default message when response body is empty", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: false,
+      status: 500,
+      text: () => Promise.resolve(""),
+    }));
+
+    await expect(moveFile(1, "docs")).rejects.toThrow("Failed to move file");
   });
 });

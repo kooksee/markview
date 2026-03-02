@@ -87,6 +87,167 @@ func TestReorderFiles(t *testing.T) {
 	})
 }
 
+func TestMoveFile(t *testing.T) {
+	t.Run("moves file to existing group", func(t *testing.T) {
+		s := newTestState(t)
+		s.groups["src"] = &Group{
+			Name:  "src",
+			Files: []*FileEntry{{ID: 1, Name: "a.md", Path: "/a.md"}, {ID: 2, Name: "b.md", Path: "/b.md"}},
+		}
+		s.groups["dst"] = &Group{
+			Name:  "dst",
+			Files: []*FileEntry{{ID: 3, Name: "c.md", Path: "/c.md"}},
+		}
+
+		if err := s.MoveFile(1, "dst"); err != nil {
+			t.Fatalf("MoveFile returned error: %v", err)
+		}
+
+		if len(s.groups["src"].Files) != 1 || s.groups["src"].Files[0].ID != 2 {
+			t.Error("source group should have only file 2")
+		}
+		if len(s.groups["dst"].Files) != 2 || s.groups["dst"].Files[1].ID != 1 {
+			t.Error("target group should have file 1 appended")
+		}
+	})
+
+	t.Run("auto-creates target group", func(t *testing.T) {
+		s := newTestState(t)
+		s.groups["src"] = &Group{
+			Name:  "src",
+			Files: []*FileEntry{{ID: 1, Name: "a.md", Path: "/a.md"}, {ID: 2, Name: "b.md", Path: "/b.md"}},
+		}
+
+		if err := s.MoveFile(1, "newgroup"); err != nil {
+			t.Fatalf("MoveFile returned error: %v", err)
+		}
+
+		if _, ok := s.groups["newgroup"]; !ok {
+			t.Fatal("target group should have been created")
+		}
+		if s.groups["newgroup"].Files[0].ID != 1 {
+			t.Error("target group should contain file 1")
+		}
+	})
+
+	t.Run("deletes empty source group", func(t *testing.T) {
+		s := newTestState(t)
+		s.groups["src"] = &Group{
+			Name:  "src",
+			Files: []*FileEntry{{ID: 1, Name: "a.md", Path: "/a.md"}},
+		}
+		s.groups["dst"] = &Group{
+			Name:  "dst",
+			Files: []*FileEntry{{ID: 2, Name: "b.md", Path: "/b.md"}},
+		}
+
+		if err := s.MoveFile(1, "dst"); err != nil {
+			t.Fatalf("MoveFile returned error: %v", err)
+		}
+
+		if _, ok := s.groups["src"]; ok {
+			t.Error("empty source group should have been deleted")
+		}
+	})
+
+	t.Run("returns error for duplicate path", func(t *testing.T) {
+		s := newTestState(t)
+		s.groups["src"] = &Group{
+			Name:  "src",
+			Files: []*FileEntry{{ID: 1, Name: "a.md", Path: "/a.md"}},
+		}
+		s.groups["dst"] = &Group{
+			Name:  "dst",
+			Files: []*FileEntry{{ID: 2, Name: "a.md", Path: "/a.md"}},
+		}
+
+		err := s.MoveFile(1, "dst")
+		if err == nil {
+			t.Fatal("MoveFile should return error for duplicate path")
+		}
+	})
+
+	t.Run("returns error for same group", func(t *testing.T) {
+		s := newTestState(t)
+		s.groups["src"] = &Group{
+			Name:  "src",
+			Files: []*FileEntry{{ID: 1, Name: "a.md", Path: "/a.md"}},
+		}
+
+		err := s.MoveFile(1, "src")
+		if err == nil {
+			t.Fatal("MoveFile should return error for same group")
+		}
+	})
+
+	t.Run("returns error for unknown file", func(t *testing.T) {
+		s := newTestState(t)
+		err := s.MoveFile(999, "dst")
+		if err == nil {
+			t.Fatal("MoveFile should return error for unknown file")
+		}
+	})
+}
+
+func TestHandleMoveFile(t *testing.T) {
+	t.Run("moves file via HTTP", func(t *testing.T) {
+		s := newTestState(t)
+		s.groups["src"] = &Group{
+			Name:  "src",
+			Files: []*FileEntry{{ID: 1, Name: "a.md", Path: "/a.md"}},
+		}
+		s.groups["dst"] = &Group{
+			Name:  "dst",
+			Files: []*FileEntry{{ID: 2, Name: "b.md", Path: "/b.md"}},
+		}
+
+		handler := NewHandler(s)
+		body, err := json.Marshal(moveFileRequest{Group: "dst"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		req := httptest.NewRequest("PUT", "/_/api/files/1/group", bytes.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+
+		handler.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusNoContent {
+			t.Fatalf("got status %d, want %d", rec.Code, http.StatusNoContent)
+		}
+		if len(s.groups["dst"].Files) != 2 {
+			t.Error("target group should have 2 files")
+		}
+	})
+
+	t.Run("returns 409 for duplicate path", func(t *testing.T) {
+		s := newTestState(t)
+		s.groups["src"] = &Group{
+			Name:  "src",
+			Files: []*FileEntry{{ID: 1, Name: "a.md", Path: "/a.md"}},
+		}
+		s.groups["dst"] = &Group{
+			Name:  "dst",
+			Files: []*FileEntry{{ID: 2, Name: "a.md", Path: "/a.md"}},
+		}
+
+		handler := NewHandler(s)
+		body, err := json.Marshal(moveFileRequest{Group: "dst"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		req := httptest.NewRequest("PUT", "/_/api/files/1/group", bytes.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+
+		handler.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusConflict {
+			t.Fatalf("got status %d, want %d", rec.Code, http.StatusConflict)
+		}
+	})
+}
+
 func TestHandleReorderFiles(t *testing.T) {
 	t.Run("reorders files via HTTP", func(t *testing.T) {
 		s := newTestState(t)

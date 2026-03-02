@@ -174,6 +174,66 @@ func (s *State) ReorderFiles(groupName string, fileIDs []int) bool {
 	return true
 }
 
+func (s *State) MoveFile(id int, targetGroup string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	var file *FileEntry
+	var sourceGroupName string
+	var sourceGroup *Group
+	for gName, g := range s.groups {
+		for _, f := range g.Files {
+			if f.ID == id {
+				file = f
+				sourceGroupName = gName
+				sourceGroup = g
+				break
+			}
+		}
+		if file != nil {
+			break
+		}
+	}
+	if file == nil {
+		return fmt.Errorf("file not found")
+	}
+
+	if sourceGroupName == targetGroup {
+		return fmt.Errorf("file is already in group %q", targetGroup)
+	}
+
+	// Check for duplicate path in target group
+	if tg, ok := s.groups[targetGroup]; ok {
+		for _, f := range tg.Files {
+			if f.Path == file.Path {
+				return fmt.Errorf("file %q already exists in group %q", file.Name, targetGroup)
+			}
+		}
+	}
+
+	// Remove from source group
+	for i, f := range sourceGroup.Files {
+		if f.ID == id {
+			sourceGroup.Files = append(sourceGroup.Files[:i], sourceGroup.Files[i+1:]...)
+			break
+		}
+	}
+	if len(sourceGroup.Files) == 0 {
+		delete(s.groups, sourceGroupName)
+	}
+
+	// Add to target group
+	tg, ok := s.groups[targetGroup]
+	if !ok {
+		tg = &Group{Name: targetGroup}
+		s.groups[targetGroup] = tg
+	}
+	tg.Files = append(tg.Files, file)
+
+	s.sendEvent(sseEvent{Name: "update", Data: "{}"})
+	return nil
+}
+
 func (s *State) RemoveFile(id int) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -352,6 +412,10 @@ type reorderFilesRequest struct {
 	FileIDs []int `json:"fileIds"`
 }
 
+type moveFileRequest struct {
+	Group string `json:"group"`
+}
+
 type addFileRequest struct {
 	Path  string `json:"path"`
 	Group string `json:"group"`
@@ -372,6 +436,7 @@ func NewHandler(state *State) http.Handler {
 
 	mux.HandleFunc("POST /_/api/files", handleAddFile(state))
 	mux.HandleFunc("DELETE /_/api/files/{id}", handleRemoveFile(state))
+	mux.HandleFunc("PUT /_/api/files/{id}/group", handleMoveFile(state))
 	mux.HandleFunc("GET /_/api/groups", handleGroups(state))
 	mux.HandleFunc("PUT /_/api/groups/{name}/order", handleReorderFiles(state))
 	mux.HandleFunc("GET /_/api/files/{id}/content", handleFileContent(state))
@@ -426,6 +491,26 @@ func handleRemoveFile(state *State) http.HandlerFunc {
 		}
 		if !state.RemoveFile(id) {
 			http.Error(w, "file not found", http.StatusNotFound)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
+func handleMoveFile(state *State) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id, err := strconv.Atoi(r.PathValue("id"))
+		if err != nil {
+			http.Error(w, "invalid file id", http.StatusBadRequest)
+			return
+		}
+		var req moveFileRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		if err := state.MoveFile(id, req.Group); err != nil {
+			http.Error(w, err.Error(), http.StatusConflict)
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)

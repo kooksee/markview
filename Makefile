@@ -17,8 +17,8 @@ test:
 build: generate
 	go build -ldflags=$(BUILD_LDFLAGS) -trimpath -o mo .
 
-dev: generate
-	go run . -p 16275 $(ARGS)
+dev: build
+	./mo -p 16275 $(ARGS)
 
 screenshot: build
 	cd internal/frontend && pnpm run screenshots
