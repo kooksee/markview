@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { fetchGroups, fetchFileContent, openRelativeFile } from "./useApi";
+import { fetchGroups, fetchFileContent, openRelativeFile, reorderFiles } from "./useApi";
 
 beforeEach(() => {
   vi.restoreAllMocks();
@@ -75,5 +75,42 @@ describe("openRelativeFile", () => {
     }));
 
     await expect(openRelativeFile(1, "missing.md")).rejects.toThrow("Failed to open file");
+  });
+});
+
+describe("reorderFiles", () => {
+  it("sends PUT with correct URL and body", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: true,
+    }));
+
+    await reorderFiles("default", [3, 1, 2]);
+    expect(fetch).toHaveBeenCalledWith("/_/api/groups/default/order", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ fileIds: [3, 1, 2] }),
+    });
+  });
+
+  it("encodes group name in URL", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: true,
+    }));
+
+    await reorderFiles("my group", [1, 2]);
+    expect(fetch).toHaveBeenCalledWith("/_/api/groups/my%20group/order", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ fileIds: [1, 2] }),
+    });
+  });
+
+  it("throws on error response", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: false,
+      status: 400,
+    }));
+
+    await expect(reorderFiles("default", [1])).rejects.toThrow("Failed to reorder files");
   });
 });

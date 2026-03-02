@@ -142,6 +142,38 @@ func (s *State) FindGroupForFile(id int) string {
 	return ""
 }
 
+func (s *State) ReorderFiles(groupName string, fileIDs []int) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	g, ok := s.groups[groupName]
+	if !ok {
+		return false
+	}
+
+	if len(fileIDs) != len(g.Files) {
+		return false
+	}
+
+	idToFile := make(map[int]*FileEntry, len(g.Files))
+	for _, f := range g.Files {
+		idToFile[f.ID] = f
+	}
+
+	reordered := make([]*FileEntry, 0, len(fileIDs))
+	for _, id := range fileIDs {
+		f, ok := idToFile[id]
+		if !ok {
+			return false
+		}
+		reordered = append(reordered, f)
+	}
+
+	g.Files = reordered
+	s.sendEvent(sseEvent{Name: "update", Data: "{}"})
+	return true
+}
+
 func (s *State) RemoveFile(id int) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -316,6 +348,10 @@ func (s *State) sendEvent(e sseEvent) {
 	}
 }
 
+type reorderFilesRequest struct {
+	FileIDs []int `json:"fileIds"`
+}
+
 type addFileRequest struct {
 	Path  string `json:"path"`
 	Group string `json:"group"`
@@ -337,6 +373,7 @@ func NewHandler(state *State) http.Handler {
 	mux.HandleFunc("POST /_/api/files", handleAddFile(state))
 	mux.HandleFunc("DELETE /_/api/files/{id}", handleRemoveFile(state))
 	mux.HandleFunc("GET /_/api/groups", handleGroups(state))
+	mux.HandleFunc("PUT /_/api/groups/{name}/order", handleReorderFiles(state))
 	mux.HandleFunc("GET /_/api/files/{id}/content", handleFileContent(state))
 	mux.HandleFunc("GET /_/api/files/{id}/raw/{path...}", handleFileRaw(state))
 	mux.HandleFunc("POST /_/api/files/open", handleOpenFile(state))
@@ -389,6 +426,22 @@ func handleRemoveFile(state *State) http.HandlerFunc {
 		}
 		if !state.RemoveFile(id) {
 			http.Error(w, "file not found", http.StatusNotFound)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
+func handleReorderFiles(state *State) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		groupName := r.PathValue("name")
+		var req reorderFilesRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		if !state.ReorderFiles(groupName, req.FileIDs) {
+			http.Error(w, "invalid file IDs or group not found", http.StatusBadRequest)
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)

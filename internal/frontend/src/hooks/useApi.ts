@@ -49,6 +49,18 @@ export async function removeFile(id: number): Promise<void> {
   if (!res.ok) throw new Error("Failed to remove file");
 }
 
+export async function reorderFiles(
+  groupName: string,
+  fileIds: number[],
+): Promise<void> {
+  const res = await fetch(`/_/api/groups/${encodeURIComponent(groupName)}/order`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ fileIds }),
+  });
+  if (!res.ok) throw new Error("Failed to reorder files");
+}
+
 export async function restartServer(): Promise<void> {
   const res = await fetch("/_/api/restart", { method: "POST" });
   if (!res.ok) throw new Error("Failed to restart server");

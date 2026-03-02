@@ -30,6 +30,7 @@ describe("Sidebar", () => {
         activeGroup="default"
         activeFileId={null}
         onFileSelect={() => {}}
+        onFilesReorder={() => {}}
       />,
     );
     expect(screen.getByText("README.md")).toBeInTheDocument();
@@ -44,6 +45,7 @@ describe("Sidebar", () => {
         activeGroup="docs"
         activeFileId={null}
         onFileSelect={() => {}}
+        onFilesReorder={() => {}}
       />,
     );
     expect(screen.getByText("api.md")).toBeInTheDocument();
@@ -57,6 +59,7 @@ describe("Sidebar", () => {
         activeGroup="default"
         activeFileId={1}
         onFileSelect={() => {}}
+        onFilesReorder={() => {}}
       />,
     );
     const activeButton = screen.getByText("README.md").closest("button")!;
@@ -75,6 +78,7 @@ describe("Sidebar", () => {
         activeGroup="default"
         activeFileId={null}
         onFileSelect={onFileSelect}
+        onFilesReorder={() => {}}
       />,
     );
 
@@ -89,6 +93,7 @@ describe("Sidebar", () => {
         activeGroup="default"
         activeFileId={null}
         onFileSelect={() => {}}
+        onFilesReorder={() => {}}
       />,
     );
     expect(screen.getByTitle("/README.md")).toBeInTheDocument();
@@ -103,6 +108,7 @@ describe("Sidebar", () => {
         activeGroup="empty"
         activeFileId={null}
         onFileSelect={() => {}}
+        onFilesReorder={() => {}}
       />,
     );
     expect(screen.queryByRole("button")).not.toBeInTheDocument();

@@ -9,7 +9,7 @@ import type { TocHeading } from "./components/TocPanel";
 import { useSSE } from "./hooks/useSSE";
 import { useActiveHeading } from "./hooks/useActiveHeading";
 import type { Group } from "./hooks/useApi";
-import { fetchGroups, removeFile } from "./hooks/useApi";
+import { fetchGroups, removeFile, reorderFiles } from "./hooks/useApi";
 import {
   allFileIds,
   parseGroupFromPath,
@@ -35,6 +35,7 @@ export function App() {
     try {
       const data = await fetchGroups();
       const newIds = allFileIds(data);
+      const wasEmpty = knownFileIds.current.size === 0;
       const added: number[] = [];
       for (const id of newIds) {
         if (!knownFileIds.current.has(id)) {
@@ -45,7 +46,7 @@ export function App() {
 
       setGroups(data);
 
-      if (added.length > 0 && initialFileId.current == null) {
+      if (added.length > 0 && !wasEmpty && initialFileId.current == null) {
         // Only auto-select if the new file belongs to the current active group
         setActiveGroup((currentGroup) => {
           const group = data.find((g) => g.name === currentGroup);
@@ -140,6 +141,24 @@ export function App() {
     }
   }, [activeFileId]);
 
+  const handleFilesReorder = useCallback(
+    (groupName: string, fileIds: number[]) => {
+      // Optimistic update
+      setGroups((prev) =>
+        prev.map((g) => {
+          if (g.name !== groupName) return g;
+          const idToFile = new Map(g.files.map((f) => [f.id, f]));
+          const reordered = fileIds
+            .map((id) => idToFile.get(id))
+            .filter((f): f is NonNullable<typeof f> => f != null);
+          return { ...g, files: reordered };
+        }),
+      );
+      reorderFiles(groupName, fileIds);
+    },
+    [],
+  );
+
   const headingIds = useMemo(() => headings.map((h) => h.id), [headings]);
 
   const activeHeadingId = useActiveHeading(
@@ -185,6 +204,7 @@ export function App() {
           activeGroup={activeGroup}
           activeFileId={activeFileId}
           onFileSelect={setActiveFileId}
+          onFilesReorder={handleFilesReorder}
         />}
         <main className="flex-1 flex flex-col overflow-hidden">
           <div ref={scrollContainerRef} className="flex-1 overflow-y-auto p-8 bg-gh-bg">
