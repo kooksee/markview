@@ -341,29 +341,21 @@ func postItems(client *http.Client, addr, endpoint, key, group string, items []s
 }
 
 // probeServer checks that a mo server is running on addr by calling
-// GET /_/api/groups and validating the response structure.
+// GET /_/api/status and validating the response contains a version field.
 func probeServer(addr string) (*http.Client, error) {
 	client := &http.Client{Timeout: 2 * time.Second}
-	resp, err := client.Get(fmt.Sprintf("http://%s/_/api/groups", addr))
+	resp, err := client.Get(fmt.Sprintf("http://%s/_/api/status", addr))
 	if err != nil {
 		return nil, fmt.Errorf("no mo server found on %s", addr)
 	}
 	defer resp.Body.Close()
 
-	var groups []struct {
-		Name  string `json:"name"`
-		Files []struct {
-			ID int `json:"id"`
-		} `json:"files"`
+	var status struct {
+		Version string `json:"version"`
+		PID     int    `json:"pid"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&groups); err != nil {
+	if err := json.NewDecoder(resp.Body).Decode(&status); err != nil || status.Version == "" {
 		return nil, fmt.Errorf("server on %s is not a mo instance", addr)
-	}
-	// Validate that the response has the expected structure
-	for _, g := range groups {
-		if g.Name == "" {
-			return nil, fmt.Errorf("server on %s is not a mo instance", addr)
-		}
 	}
 	return client, nil
 }
