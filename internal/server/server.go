@@ -45,6 +45,11 @@ type GlobPattern struct {
 	Group        string // Target group for matched files
 }
 
+// IsRecursive returns true if the pattern contains ** for recursive matching.
+func (gp *GlobPattern) IsRecursive() bool {
+	return strings.Contains(gp.Pattern, "**")
+}
+
 type State struct {
 	mu          sync.RWMutex
 	groups      map[string]*Group
@@ -366,22 +371,26 @@ func (s *State) AddPattern(absPattern, groupName string) (int, error) {
 		return 0, fmt.Errorf("base path %q is not a directory", base)
 	}
 
-	s.mu.Lock()
-	for _, p := range s.patterns {
-		if p.Pattern == absPattern && p.Group == groupName {
-			s.mu.Unlock()
-			return 0, nil
+	gp, added := func() (*GlobPattern, bool) {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		for _, p := range s.patterns {
+			if p.Pattern == absPattern && p.Group == groupName {
+				return nil, false
+			}
 		}
+		gp := &GlobPattern{
+			Pattern:      absPattern,
+			PatternSlash: dsPattern,
+			BaseDir:      base,
+			Group:        groupName,
+		}
+		s.patterns = append(s.patterns, gp)
+		return gp, true
+	}()
+	if !added {
+		return 0, nil
 	}
-
-	gp := &GlobPattern{
-		Pattern:      absPattern,
-		PatternSlash: dsPattern,
-		BaseDir:      base,
-		Group:        groupName,
-	}
-	s.patterns = append(s.patterns, gp)
-	s.mu.Unlock()
 
 	// Initial expansion
 	matches, err := doublestar.Glob(os.DirFS(base), relPat, doublestar.WithFilesOnly())
@@ -537,9 +546,7 @@ func (s *State) watchDirsForPattern(gp *GlobPattern) {
 	if s.watcher == nil {
 		return
 	}
-	hasRecursive := strings.Contains(gp.Pattern, "**")
-
-	if !hasRecursive {
+	if !gp.IsRecursive() {
 		s.addDirWatch(gp.BaseDir)
 		return
 	}
@@ -582,23 +589,26 @@ func (s *State) handleCreateForGlobs(path string) {
 	}
 
 	if info.IsDir() {
+		watched := false
 		for _, gp := range patterns {
-			if !strings.Contains(gp.Pattern, "**") {
+			if !gp.IsRecursive() {
 				continue
 			}
 			if !strings.HasPrefix(path, gp.BaseDir) {
 				continue
 			}
-			s.addDirWatch(path)
-			// Scan directory contents for matching files
-			filepath.WalkDir(path, func(p string, d os.DirEntry, err error) error { //nolint:errcheck
-				if err != nil || d.IsDir() {
+			if !watched {
+				s.addDirWatch(path)
+				// Scan directory contents for matching files
+				filepath.WalkDir(path, func(p string, d os.DirEntry, err error) error { //nolint:errcheck
+					if err != nil || d.IsDir() {
+						return nil
+					}
+					s.matchAndAddFile(p, patterns)
 					return nil
-				}
-				s.matchAndAddFile(p, patterns)
-				return nil
-			})
-			break
+				})
+				watched = true
+			}
 		}
 		return
 	}

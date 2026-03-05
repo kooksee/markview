@@ -167,7 +167,7 @@ func run(cmd *cobra.Command, args []string) error {
 	if len(watchPatterns) > 0 && len(args) > 0 {
 		hasGlob := false
 		for _, p := range watchPatterns {
-			if strings.ContainsAny(p, "*?[") {
+			if hasGlobChars(p) {
 				hasGlob = true
 				break
 			}
@@ -218,10 +218,14 @@ func loadRestoreData(path string) (map[string][]string, map[string][]string, err
 	return rd.Groups, rd.Patterns, nil
 }
 
+func hasGlobChars(s string) bool {
+	return strings.ContainsAny(s, "*?[")
+}
+
 func resolvePatterns(patterns []string) ([]string, error) {
 	var resolved []string
 	for _, pat := range patterns {
-		if !strings.ContainsAny(pat, "*?[") {
+		if !hasGlobChars(pat) {
 			return nil, fmt.Errorf("--watch pattern %q does not contain glob characters (* ? [); use file arguments instead", pat)
 		}
 		abs, err := filepath.Abs(pat)
@@ -275,8 +279,8 @@ func tryAddToExisting(addr string, files []string, patterns []string) bool {
 		}
 	}
 
-	postItems(client, addr, "/_/api/files", "path", files)
-	postItems(client, addr, "/_/api/patterns", "pattern", patterns)
+	postItems(client, addr, "/_/api/files", "path", target, files)
+	postItems(client, addr, "/_/api/patterns", "pattern", target, patterns)
 
 	added := len(files) + len(patterns)
 	slog.Info("added to existing server", "files", len(files), "patterns", len(patterns), "addr", addr)
@@ -289,11 +293,11 @@ func tryAddToExisting(addr string, files []string, patterns []string) bool {
 	return true
 }
 
-func postItems(client *http.Client, addr, endpoint, key string, items []string) {
+func postItems(client *http.Client, addr, endpoint, key, group string, items []string) {
 	for _, item := range items {
 		body, err := json.Marshal(map[string]string{
 			key:     item,
-			"group": target,
+			"group": group,
 		})
 		if err != nil {
 			slog.Warn("failed to marshal request", key, item, "error", err)
