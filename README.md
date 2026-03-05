@@ -89,6 +89,18 @@ $ mo --watch '*.md' --watch 'docs/**/*.md'      # Multiple patterns
 
 `--watch` cannot be combined with file arguments. The `**` pattern matches directories recursively.
 
+#### Removing watch patterns
+
+Use `--unwatch` to stop watching a previously registered pattern. Files already added remain in the sidebar.
+
+``` console
+$ mo --unwatch '**/*.md'                              # Stop watching a pattern (default group)
+$ mo --unwatch 'docs/**/*.md' --target docs            # Stop watching in a specific group
+$ mo --unwatch '/Users/you/project/**/*.md'            # Stop watching by absolute path
+```
+
+Patterns are resolved to absolute paths before matching, so you can specify either a relative glob or the full path shown by `--status`.
+
 ### Sidebar view modes
 
 The sidebar supports flat and tree view modes. Flat view shows file names only, while tree view displays the directory hierarchy.
@@ -111,6 +123,12 @@ Use `--status` to check all running mo servers, and `--shutdown` to stop one:
 
 ``` console
 $ mo --status              # Show all running mo servers
+http://localhost:6275 (pid 12345, v0.12.0)
+  default: 5 file(s)
+    watching: /Users/you/project/src/**/*.md, /Users/you/project/*.md
+  docs: 2 file(s)
+    watching: /Users/you/project/docs/**/*.md
+
 $ mo --shutdown            # Shut down the mo server on the default port
 $ mo --shutdown -p 6276    # Shut down the mo server on a specific port
 ```
@@ -135,6 +153,7 @@ Click the <img src="images/icons/restart.svg" width="16" height="16" alt="restar
 | `--no-open` | | | Never open browser |
 | `--status` | | | Show all running mo servers |
 | `--watch` | `-w` | | Glob pattern to watch for matching files (repeatable) |
+| `--unwatch` | | | Remove a watched glob pattern (repeatable) |
 | `--shutdown` | | | Shut down the running mo server |
 | `--foreground` | | | Run mo server in foreground |
 
