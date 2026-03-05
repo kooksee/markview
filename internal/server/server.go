@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/bmatcuk/doublestar/v4"
 	"github.com/fsnotify/fsnotify"
 	"github.com/k1LoW/donegroup"
 	"github.com/k1LoW/mo/internal/static"
@@ -36,6 +37,14 @@ type sseEvent struct {
 	Data string // SSE data payload (JSON)
 }
 
+// GlobPattern represents a glob pattern being watched for new files.
+type GlobPattern struct {
+	Pattern      string // Absolute glob pattern
+	PatternSlash string // Pre-converted to forward slashes for doublestar matching
+	BaseDir      string // Base directory extracted via SplitPattern
+	Group        string // Target group for matched files
+}
+
 type State struct {
 	mu          sync.RWMutex
 	groups      map[string]*Group
@@ -44,6 +53,8 @@ type State struct {
 	watcher     *fsnotify.Watcher
 	restartCh   chan string
 	shutdownCh  chan struct{}
+	patterns    []*GlobPattern
+	watchedDirs map[string]int // directory → reference count
 }
 
 func NewState(ctx context.Context) *State {
@@ -59,6 +70,7 @@ func NewState(ctx context.Context) *State {
 		watcher:     w,
 		restartCh:   make(chan string, 1),
 		shutdownCh:  make(chan struct{}, 1),
+		watchedDirs: make(map[string]int),
 	}
 
 	if w != nil {
@@ -337,9 +349,69 @@ func (s *State) ShutdownCh() <-chan struct{} {
 	return s.shutdownCh
 }
 
+// AddPattern registers a glob pattern for automatic file discovery.
+// It performs an initial expansion to add existing matches and starts
+// watching the base directory for new files.
+func (s *State) AddPattern(absPattern, groupName string) (int, error) {
+	// Use forward slashes for doublestar
+	dsPattern := filepath.ToSlash(absPattern)
+	base, relPat := doublestar.SplitPattern(dsPattern)
+	base = filepath.FromSlash(base)
+
+	info, err := os.Stat(base)
+	if err != nil {
+		return 0, fmt.Errorf("base directory %q does not exist: %w", base, err)
+	}
+	if !info.IsDir() {
+		return 0, fmt.Errorf("base path %q is not a directory", base)
+	}
+
+	s.mu.Lock()
+	for _, p := range s.patterns {
+		if p.Pattern == absPattern && p.Group == groupName {
+			s.mu.Unlock()
+			return 0, nil
+		}
+	}
+
+	gp := &GlobPattern{
+		Pattern:      absPattern,
+		PatternSlash: dsPattern,
+		BaseDir:      base,
+		Group:        groupName,
+	}
+	s.patterns = append(s.patterns, gp)
+	s.mu.Unlock()
+
+	// Initial expansion
+	matches, err := doublestar.Glob(os.DirFS(base), relPat, doublestar.WithFilesOnly())
+	if err != nil {
+		return 0, fmt.Errorf("glob expansion failed: %w", err)
+	}
+
+	for _, m := range matches {
+		abs := filepath.Join(base, m)
+		s.AddFile(abs, groupName)
+	}
+
+	s.watchDirsForPattern(gp)
+
+	return len(matches), nil
+}
+
+// Patterns returns a copy of all registered glob patterns.
+func (s *State) Patterns() []*GlobPattern {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	result := make([]*GlobPattern, len(s.patterns))
+	copy(result, s.patterns)
+	return result
+}
+
 // RestoreData represents the state to be persisted across restarts.
 type RestoreData struct {
-	Groups map[string][]string `json:"groups"`
+	Groups   map[string][]string `json:"groups"`
+	Patterns map[string][]string `json:"patterns,omitempty"`
 }
 
 // WriteRestoreFile writes RestoreData to a temporary file and returns the path.
@@ -358,7 +430,7 @@ func WriteRestoreFile(data RestoreData) (string, error) {
 	return f.Name(), nil
 }
 
-// ExportState writes the current groups and file paths to a temporary file and returns the path.
+// ExportState writes the current groups, file paths, and patterns to a temporary file and returns the path.
 func (s *State) ExportState() (string, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -374,6 +446,13 @@ func (s *State) ExportState() (string, error) {
 		data.Groups[name] = paths
 	}
 
+	if len(s.patterns) > 0 {
+		data.Patterns = make(map[string][]string)
+		for _, p := range s.patterns {
+			data.Patterns[p.Group] = append(data.Patterns[p.Group], p.Pattern)
+		}
+	}
+
 	return WriteRestoreFile(data)
 }
 
@@ -385,29 +464,31 @@ func (s *State) watchLoop() {
 				return
 			}
 			ids := s.findIDsByPath(event.Name)
-			if len(ids) == 0 {
-				break
-			}
-			if event.Has(fsnotify.Write) || event.Has(fsnotify.Create) {
-				slog.Info("file changed", "path", event.Name)
-				s.notifyFileChanged(ids)
-			}
-			// Editors using atomic save (write-to-temp + rename) cause
-			// the original inode to disappear, which removes the watch.
-			// Re-add the watch so subsequent saves are still detected.
-			if event.Has(fsnotify.Remove) || event.Has(fsnotify.Rename) {
-				time.AfterFunc(100*time.Millisecond, func() {
-					if err := s.watcher.Add(event.Name); err != nil {
-						// File is actually gone — remove from file list
-						slog.Info("file deleted, removing from list", "path", event.Name)
-						for _, id := range ids {
-							s.RemoveFile(id)
+			if len(ids) > 0 {
+				if event.Has(fsnotify.Write) || event.Has(fsnotify.Create) {
+					slog.Info("file changed", "path", event.Name)
+					s.notifyFileChanged(ids)
+				}
+				// Editors using atomic save (write-to-temp + rename) cause
+				// the original inode to disappear, which removes the watch.
+				// Re-add the watch so subsequent saves are still detected.
+				if event.Has(fsnotify.Remove) || event.Has(fsnotify.Rename) {
+					time.AfterFunc(100*time.Millisecond, func() {
+						if err := s.watcher.Add(event.Name); err != nil {
+							// File is actually gone — remove from file list
+							slog.Info("file deleted, removing from list", "path", event.Name)
+							for _, id := range ids {
+								s.RemoveFile(id)
+							}
+						} else {
+							slog.Info("re-watching file", "path", event.Name)
+							s.notifyFileChanged(ids)
 						}
-					} else {
-						slog.Info("re-watching file", "path", event.Name)
-						s.notifyFileChanged(ids)
-					}
-				})
+					})
+				}
+			}
+			if event.Has(fsnotify.Create) {
+				s.handleCreateForGlobs(event.Name)
 			}
 		case err, ok := <-s.watcher.Errors:
 			if !ok {
@@ -452,6 +533,94 @@ func (s *State) sendEvent(e sseEvent) {
 	}
 }
 
+func (s *State) watchDirsForPattern(gp *GlobPattern) {
+	if s.watcher == nil {
+		return
+	}
+	hasRecursive := strings.Contains(gp.Pattern, "**")
+
+	if !hasRecursive {
+		s.addDirWatch(gp.BaseDir)
+		return
+	}
+
+	filepath.WalkDir(gp.BaseDir, func(path string, d os.DirEntry, err error) error { //nolint:errcheck
+		if err != nil {
+			return nil
+		}
+		if d.IsDir() {
+			s.addDirWatch(path)
+		}
+		return nil
+	})
+}
+
+func (s *State) addDirWatch(dir string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.watchedDirs[dir]++
+	if s.watchedDirs[dir] == 1 && s.watcher != nil {
+		if err := s.watcher.Add(dir); err != nil {
+			slog.Warn("failed to watch directory", "path", dir, "error", err)
+		}
+	}
+}
+
+func (s *State) handleCreateForGlobs(path string) {
+	s.mu.RLock()
+	if len(s.patterns) == 0 {
+		s.mu.RUnlock()
+		return
+	}
+	patterns := make([]*GlobPattern, len(s.patterns))
+	copy(patterns, s.patterns)
+	s.mu.RUnlock()
+
+	info, err := os.Stat(path)
+	if err != nil {
+		return
+	}
+
+	if info.IsDir() {
+		for _, gp := range patterns {
+			if !strings.Contains(gp.Pattern, "**") {
+				continue
+			}
+			if !strings.HasPrefix(path, gp.BaseDir) {
+				continue
+			}
+			s.addDirWatch(path)
+			// Scan directory contents for matching files
+			filepath.WalkDir(path, func(p string, d os.DirEntry, err error) error { //nolint:errcheck
+				if err != nil || d.IsDir() {
+					return nil
+				}
+				s.matchAndAddFile(p, patterns)
+				return nil
+			})
+			break
+		}
+		return
+	}
+
+	s.matchAndAddFile(path, patterns)
+}
+
+func (s *State) matchAndAddFile(path string, patterns []*GlobPattern) {
+	dsPath := filepath.ToSlash(path)
+	for _, gp := range patterns {
+		matched, err := doublestar.Match(gp.PatternSlash, dsPath)
+		if err != nil {
+			continue
+		}
+		if matched {
+			s.AddFile(path, gp.Group)
+			slog.Info("auto-added file via glob", "path", path, "pattern", gp.Pattern, "group", gp.Group)
+			return
+		}
+	}
+}
+
 type reorderFilesRequest struct {
 	Group   string `json:"group"`
 	FileIDs []int  `json:"fileIds"`
@@ -464,6 +633,15 @@ type moveFileRequest struct {
 type addFileRequest struct {
 	Path  string `json:"path"`
 	Group string `json:"group"`
+}
+
+type addPatternRequest struct {
+	Pattern string `json:"pattern"`
+	Group   string `json:"group"`
+}
+
+type addPatternResponse struct {
+	Matched int `json:"matched"`
 }
 
 type fileContentResponse struct {
@@ -487,6 +665,7 @@ func NewHandler(state *State) http.Handler {
 	mux.HandleFunc("GET /_/api/files/{id}/content", handleFileContent(state))
 	mux.HandleFunc("GET /_/api/files/{id}/raw/{path...}", handleFileRaw(state))
 	mux.HandleFunc("POST /_/api/files/open", handleOpenFile(state))
+	mux.HandleFunc("POST /_/api/patterns", handleAddPattern(state))
 	mux.HandleFunc("POST /_/api/restart", handleRestart(state))
 	mux.HandleFunc("POST /_/api/shutdown", handleShutdown(state))
 	mux.HandleFunc("GET /_/api/status", handleStatus(state))
@@ -695,6 +874,33 @@ func handleOpenFile(state *State) http.HandlerFunc {
 	}
 }
 
+func handleAddPattern(state *State) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var req addPatternRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		group, err := ResolveGroupName(req.Group)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		matched, err := state.AddPattern(req.Pattern, group)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(addPatternResponse{Matched: matched}); err != nil {
+			slog.Error("failed to encode response", "error", err)
+		}
+	}
+}
+
 func handleRestart(state *State) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		restoreFile, err := state.ExportState()
@@ -722,16 +928,24 @@ func handleShutdown(state *State) http.HandlerFunc {
 
 func handleStatus(state *State) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		patterns := state.Patterns()
+		patternStrs := make([]string, len(patterns))
+		for i, p := range patterns {
+			patternStrs[i] = p.Pattern
+		}
+
 		resp := struct {
-			Version  string  `json:"version"`
-			Revision string  `json:"revision"`
-			PID      int     `json:"pid"`
-			Groups   []Group `json:"groups"`
+			Version  string   `json:"version"`
+			Revision string   `json:"revision"`
+			PID      int      `json:"pid"`
+			Groups   []Group  `json:"groups"`
+			Patterns []string `json:"patterns,omitempty"`
 		}{
 			Version:  version.Version,
 			Revision: version.Revision,
 			PID:      os.Getpid(),
 			Groups:   state.Groups(),
+			Patterns: patternStrs,
 		}
 		w.Header().Set("Content-Type", "application/json")
 		if err := json.NewEncoder(w).Encode(resp); err != nil {

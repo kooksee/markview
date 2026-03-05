@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -19,6 +21,7 @@ func newTestState(t *testing.T) *State {
 		subscribers: make(map[chan sseEvent]struct{}),
 		restartCh:   make(chan string, 1),
 		shutdownCh:  make(chan struct{}, 1),
+		watchedDirs: make(map[string]int),
 	}
 	_ = ctx
 	return s
@@ -379,4 +382,129 @@ func TestHandleReorderFiles(t *testing.T) {
 			t.Fatalf("got status %d, want %d", rec.Code, http.StatusBadRequest)
 		}
 	})
+}
+
+func TestAddPattern_InitialExpansion(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "a.md"), []byte("# A"), 0o600) //nolint:errcheck
+	os.WriteFile(filepath.Join(dir, "b.md"), []byte("# B"), 0o600) //nolint:errcheck
+	os.WriteFile(filepath.Join(dir, "c.txt"), []byte("text"), 0o600) //nolint:errcheck
+
+	s := newTestState(t)
+	pattern := filepath.Join(dir, "*.md")
+	matched, err := s.AddPattern(pattern, DefaultGroup)
+	if err != nil {
+		t.Fatalf("AddPattern returned error: %v", err)
+	}
+	if matched != 2 {
+		t.Fatalf("got matched=%d, want 2", matched)
+	}
+
+	groups := s.Groups()
+	if len(groups) != 1 {
+		t.Fatalf("got %d groups, want 1", len(groups))
+	}
+	if len(groups[0].Files) != 2 {
+		t.Fatalf("got %d files, want 2", len(groups[0].Files))
+	}
+}
+
+func TestAddPattern_Duplicate(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "a.md"), []byte("# A"), 0o600) //nolint:errcheck
+
+	s := newTestState(t)
+	pattern := filepath.Join(dir, "*.md")
+	_, err := s.AddPattern(pattern, DefaultGroup)
+	if err != nil {
+		t.Fatalf("AddPattern returned error: %v", err)
+	}
+
+	matched, err := s.AddPattern(pattern, DefaultGroup)
+	if err != nil {
+		t.Fatalf("duplicate AddPattern returned error: %v", err)
+	}
+	if matched != 0 {
+		t.Fatalf("duplicate AddPattern returned matched=%d, want 0", matched)
+	}
+
+	patterns := s.Patterns()
+	if len(patterns) != 1 {
+		t.Fatalf("got %d patterns, want 1", len(patterns))
+	}
+}
+
+func TestAddPattern_InvalidBaseDir(t *testing.T) {
+	s := newTestState(t)
+	_, err := s.AddPattern("/nonexistent/dir/*.md", DefaultGroup)
+	if err == nil {
+		t.Fatal("AddPattern should return error for nonexistent base dir")
+	}
+}
+
+func TestExportState_WithPatterns(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "a.md"), []byte("# A"), 0o600) //nolint:errcheck
+
+	s := newTestState(t)
+	pattern := filepath.Join(dir, "*.md")
+	_, err := s.AddPattern(pattern, DefaultGroup)
+	if err != nil {
+		t.Fatalf("AddPattern returned error: %v", err)
+	}
+
+	restoreFile, err := s.ExportState()
+	if err != nil {
+		t.Fatalf("ExportState returned error: %v", err)
+	}
+	defer os.Remove(restoreFile)
+
+	data, err := os.ReadFile(restoreFile)
+	if err != nil {
+		t.Fatalf("failed to read restore file: %v", err)
+	}
+
+	var rd RestoreData
+	if err := json.Unmarshal(data, &rd); err != nil {
+		t.Fatalf("failed to unmarshal restore data: %v", err)
+	}
+
+	if len(rd.Patterns) == 0 {
+		t.Fatal("RestoreData.Patterns should not be empty")
+	}
+	pats, ok := rd.Patterns[DefaultGroup]
+	if !ok || len(pats) != 1 || pats[0] != pattern {
+		t.Fatalf("got patterns=%v, want [%s]", pats, pattern)
+	}
+}
+
+func TestHandleAddPattern(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "a.md"), []byte("# A"), 0o600) //nolint:errcheck
+
+	s := newTestState(t)
+	handler := NewHandler(s)
+
+	pattern := filepath.Join(dir, "*.md")
+	body, err := json.Marshal(addPatternRequest{Pattern: pattern, Group: DefaultGroup})
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest("POST", "/_/api/patterns", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("got status %d, want %d: %s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+
+	var resp addPatternResponse
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if resp.Matched != 1 {
+		t.Fatalf("got matched=%d, want 1", resp.Matched)
+	}
 }

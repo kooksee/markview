@@ -27,14 +27,15 @@ import (
 )
 
 var (
-	target      string
-	port        int
-	open        bool
-	noOpen      bool
-	restore     string
+	target         string
+	port           int
+	open           bool
+	noOpen         bool
+	restore        string
 	shutdownServer bool
 	foreground     bool
 	statusServer   bool
+	watchPatterns  []string
 )
 
 var rootCmd = &cobra.Command{
@@ -94,7 +95,16 @@ Supported Markdown Features:
   - Mermaid diagrams
   - YAML frontmatter (displayed as a collapsible metadata block)
   - MDX files (rendered as Markdown with import/export stripped and JSX tags escaped)
-  - Raw HTML`,
+  - Raw HTML
+
+Glob Patterns:
+  Use --watch (-w) to specify glob patterns. Matching directories are
+  watched and new files are automatically added.
+  Cannot be combined with file arguments.
+
+  $ mo -w '**/*.md'                   Watch all .md files recursively
+  $ mo -w 'docs/**/*.md' -t docs      Watch docs/ tree in "docs" group
+  $ mo -w '*.md' -w 'docs/**/*.md'    Watch multiple patterns`,
 	Args:    cobra.ArbitraryArgs,
 	RunE:    run,
 	Version: version.Version,
@@ -117,6 +127,7 @@ func init() {
 	rootCmd.Flags().MarkHidden("restore") //nolint:errcheck
 	rootCmd.Flags().BoolVar(&foreground, "foreground", false, "Run mo server in foreground (do not background)")
 	rootCmd.Flags().BoolVar(&statusServer, "status", false, "Show status of all running mo servers")
+	rootCmd.Flags().StringArrayVarP(&watchPatterns, "watch", "w", nil, "Glob pattern to watch for matching files (repeatable)")
 }
 
 func run(cmd *cobra.Command, args []string) error {
@@ -140,11 +151,11 @@ func run(cmd *cobra.Command, args []string) error {
 	}
 
 	if restore != "" {
-		filesByGroup, err := loadRestoreData(restore)
+		filesByGroup, patternsByGroup, err := loadRestoreData(restore)
 		if err != nil {
 			return fmt.Errorf("failed to restore state: %w", err)
 		}
-		return startServer(cmd.Context(), addr, filesByGroup)
+		return startServer(cmd.Context(), addr, filesByGroup, patternsByGroup)
 	}
 
 	resolved, err := server.ResolveGroupName(target)
@@ -153,34 +164,73 @@ func run(cmd *cobra.Command, args []string) error {
 	}
 	target = resolved
 
+	if len(watchPatterns) > 0 && len(args) > 0 {
+		hasGlob := false
+		for _, p := range watchPatterns {
+			if strings.ContainsAny(p, "*?[") {
+				hasGlob = true
+				break
+			}
+		}
+		if !hasGlob {
+			return fmt.Errorf("cannot use --watch (-w) with file arguments\n(hint: the shell may have expanded the glob pattern; quote it to prevent expansion, e.g. -w '**/*.md')")
+		}
+		return fmt.Errorf("cannot use --watch (-w) with file arguments")
+	}
+
+	patterns, err := resolvePatterns(watchPatterns)
+	if err != nil {
+		return err
+	}
+
 	files, err := resolveFiles(args)
 	if err != nil {
 		return err
 	}
 
-	if len(files) > 0 && tryAddToExisting(addr, files) {
+	if (len(files) > 0 || len(patterns) > 0) && tryAddToExisting(addr, files, patterns) {
 		return nil
 	}
 
 	filesByGroup := map[string][]string{target: files}
-	if foreground {
-		return startServer(cmd.Context(), addr, filesByGroup)
+	var patternsByGroup map[string][]string
+	if len(patterns) > 0 {
+		patternsByGroup = map[string][]string{target: patterns}
 	}
-	return startBackground(addr, filesByGroup)
+
+	if foreground {
+		return startServer(cmd.Context(), addr, filesByGroup, patternsByGroup)
+	}
+	return startBackground(addr, filesByGroup, patternsByGroup)
 }
 
-func loadRestoreData(path string) (map[string][]string, error) {
+func loadRestoreData(path string) (map[string][]string, map[string][]string, error) {
 	data, err := os.ReadFile(path) //nolint:gosec
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	os.Remove(path)
 
 	var rd server.RestoreData
 	if err := json.Unmarshal(data, &rd); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return rd.Groups, nil
+	return rd.Groups, rd.Patterns, nil
+}
+
+func resolvePatterns(patterns []string) ([]string, error) {
+	var resolved []string
+	for _, pat := range patterns {
+		if !strings.ContainsAny(pat, "*?[") {
+			return nil, fmt.Errorf("--watch pattern %q does not contain glob characters (* ? [); use file arguments instead", pat)
+		}
+		abs, err := filepath.Abs(pat)
+		if err != nil {
+			return nil, fmt.Errorf("cannot resolve pattern %q: %w", pat, err)
+		}
+		resolved = append(resolved, abs)
+	}
+	return resolved, nil
 }
 
 func resolveFiles(args []string) ([]string, error) {
@@ -200,7 +250,7 @@ func resolveFiles(args []string) ([]string, error) {
 	return files, nil
 }
 
-func tryAddToExisting(addr string, files []string) bool {
+func tryAddToExisting(addr string, files []string, patterns []string) bool {
 	client := &http.Client{Timeout: 500 * time.Millisecond}
 
 	resp, err := client.Get(fmt.Sprintf("http://%s/_/api/groups", addr))
@@ -225,35 +275,41 @@ func tryAddToExisting(addr string, files []string) bool {
 		}
 	}
 
-	for _, f := range files {
-		body, err := json.Marshal(map[string]string{
-			"path":  f,
-			"group": target,
-		})
-		if err != nil {
-			slog.Warn("failed to marshal request", "file", f, "error", err)
-			continue
-		}
-		resp, err := client.Post(
-			fmt.Sprintf("http://%s/_/api/files", addr),
-			"application/json",
-			bytes.NewReader(body),
-		)
-		if err != nil {
-			slog.Warn("failed to add file", "file", f, "error", err)
-			continue
-		}
-		resp.Body.Close()
-	}
+	postItems(client, addr, "/_/api/files", "path", files)
+	postItems(client, addr, "/_/api/patterns", "pattern", patterns)
 
-	slog.Info("added files to existing server", "count", len(files), "addr", addr)
-	fmt.Fprintf(os.Stderr, "mo: added %d file(s) to http://%s\n", len(files), addr)
+	added := len(files) + len(patterns)
+	slog.Info("added to existing server", "files", len(files), "patterns", len(patterns), "addr", addr)
+	fmt.Fprintf(os.Stderr, "mo: added %d item(s) to http://%s\n", added, addr)
 
 	if isNewGroup || open {
 		openBrowser(addr)
 	}
 
 	return true
+}
+
+func postItems(client *http.Client, addr, endpoint, key string, items []string) {
+	for _, item := range items {
+		body, err := json.Marshal(map[string]string{
+			key:     item,
+			"group": target,
+		})
+		if err != nil {
+			slog.Warn("failed to marshal request", key, item, "error", err)
+			continue
+		}
+		resp, err := client.Post(
+			fmt.Sprintf("http://%s%s", addr, endpoint),
+			"application/json",
+			bytes.NewReader(body),
+		)
+		if err != nil {
+			slog.Warn("failed to post item", key, item, "error", err)
+			continue
+		}
+		resp.Body.Close()
+	}
 }
 
 func doShutdown(addr string) error {
@@ -287,9 +343,9 @@ func doShutdown(addr string) error {
 }
 
 type statusResponse struct {
-	Version  string `json:"version"`
-	Revision string `json:"revision"`
-	PID      int    `json:"pid"`
+	Version  string   `json:"version"`
+	Revision string   `json:"revision"`
+	PID      int      `json:"pid"`
 	Groups   []struct {
 		Name  string `json:"name"`
 		Files []struct {
@@ -298,6 +354,7 @@ type statusResponse struct {
 			Path string `json:"path"`
 		} `json:"files"`
 	} `json:"groups"`
+	Patterns []string `json:"patterns,omitempty"`
 }
 
 func doStatus() error {
@@ -337,6 +394,9 @@ func doStatus() error {
 		fmt.Fprintf(os.Stderr, "http://%s (pid %d, %s)\n", addr, status.PID, ver)
 		for _, g := range status.Groups {
 			fmt.Fprintf(os.Stderr, "  %s: %d file(s)\n", g.Name, len(g.Files))
+		}
+		for _, pat := range status.Patterns {
+			fmt.Fprintf(os.Stderr, "  watch: %s\n", pat)
 		}
 		if i < len(ports)-1 {
 			fmt.Fprintln(os.Stderr)
@@ -379,7 +439,7 @@ func discoverPorts() []int {
 	return ports
 }
 
-func startServer(ctx context.Context, addr string, filesByGroup map[string][]string) error {
+func startServer(ctx context.Context, addr string, filesByGroup map[string][]string, patternsByGroup map[string][]string) error {
 	sigCtx, stop := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
@@ -402,6 +462,14 @@ func startServer(ctx context.Context, addr string, filesByGroup map[string][]str
 	for group, files := range filesByGroup {
 		for _, f := range files {
 			state.AddFile(f, group)
+		}
+	}
+
+	for group, pats := range patternsByGroup {
+		for _, pat := range pats {
+			if _, err := state.AddPattern(pat, group); err != nil {
+				slog.Warn("failed to add pattern", "pattern", pat, "error", err)
+			}
 		}
 	}
 
@@ -474,8 +542,8 @@ func spawnNewProcess(addr string, restoreFile string) (*os.Process, error) {
 	return cmd.Process, nil
 }
 
-func startBackground(addr string, filesByGroup map[string][]string) error {
-	restoreFile, err := server.WriteRestoreFile(server.RestoreData{Groups: filesByGroup})
+func startBackground(addr string, filesByGroup map[string][]string, patternsByGroup map[string][]string) error {
+	restoreFile, err := server.WriteRestoreFile(server.RestoreData{Groups: filesByGroup, Patterns: patternsByGroup})
 	if err != nil {
 		return err
 	}
