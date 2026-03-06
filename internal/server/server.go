@@ -657,6 +657,7 @@ func (s *State) addDirWatch(dir string) {
 	s.watchedDirs[dir]++
 	if s.watchedDirs[dir] == 1 && s.watcher != nil {
 		if err := s.watcher.Add(dir); err != nil {
+			delete(s.watchedDirs, dir)
 			slog.Warn("failed to watch directory", "path", dir, "error", err)
 		}
 	}
