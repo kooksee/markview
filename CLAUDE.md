@@ -14,7 +14,7 @@ Requires Go and [pnpm](https://pnpm.io/). Node.js version is managed via `pnpm.e
 # Full build (frontend + Go binary, with ldflags)
 make build
 
-# Dev: build frontend then run with args
+# Dev: build frontend then run with args (uses port 16275, foreground mode)
 make dev ARGS="testdata/basic.md"
 
 # Dev with tab groups (-t can only specify one group per invocation)
@@ -26,11 +26,14 @@ make generate
 # Run all tests (frontend + Go)
 make test
 
-# Run a single frontend test
+# Run a single frontend test (vitest)
 cd internal/frontend && pnpm test src/utils/buildTree.test.ts
 
 # Run Go tests only
 go test ./...
+
+# Run a single Go test
+go test ./internal/server/ -run TestHandleFiles
 
 # Run linters (golangci-lint + gostyle)
 make lint

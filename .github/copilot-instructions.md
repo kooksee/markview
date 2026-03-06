@@ -12,20 +12,32 @@ Requires Go and [pnpm](https://pnpm.io/). Node.js version is managed via `pnpm.e
 # Full build (frontend + Go binary, with ldflags)
 make build
 
-# Dev: build frontend then run with args
+# Dev: build frontend then run with args (uses port 16275, foreground mode)
 make dev ARGS="testdata/basic.md"
 
-# Frontend code generation only
+# Dev with tab groups (-t can only specify one group per invocation)
+make dev ARGS="-t design testdata/basic.md"
+
+# Frontend code generation only (called by make build/dev via go generate)
 make generate
 
 # Run all tests (frontend + Go)
 make test
 
+# Run a single frontend test (vitest)
+cd internal/frontend && pnpm test src/utils/buildTree.test.ts
+
 # Run Go tests only
 go test ./...
 
+# Run a single Go test
+go test ./internal/server/ -run TestHandleFiles
+
 # Run linters (golangci-lint + gostyle)
 make lint
+
+# CI target (install dev deps + generate + test)
+make ci
 ```
 
 ### CLI Flags
@@ -38,6 +50,7 @@ make lint
 - `--unwatch` — Remove a watched glob pattern (repeatable)
 - `--status` — Show status of all running mo servers
 - `--shutdown` — Shut down the running mo server
+- `--restart` — Restart the running mo server
 - `--foreground` — Run mo server in foreground (do not background)
 
 ## Architecture
@@ -60,6 +73,7 @@ Key endpoints:
 - `DELETE /_/api/files/{id}` — Remove file
 - `GET /_/api/files/{id}/content` — File content (markdown)
 - `PUT /_/api/files/{id}/group` — Move file to another group
+- `PUT /_/api/reorder` — Reorder files in a group (group name in body)
 - `POST /_/api/files/open` — Open relative file link
 - `POST /_/api/patterns` — Add glob watch pattern
 - `DELETE /_/api/patterns` — Remove glob watch pattern
@@ -86,3 +100,12 @@ Key endpoints:
 - **Glob pattern watching**: `--watch` registers glob patterns that are expanded to matching files and monitored for new files via fsnotify directory watches. Patterns are stored with reference-counted directory watches (`watchedDirs map[string]int`). `--unwatch` removes patterns and decrements watch ref counts. Groups persist as long as they have files or patterns.
 - **Resizable panels**: Both `Sidebar.tsx` (left) and `TocPanel.tsx` (right) use the same drag-to-resize pattern with localStorage persistence. Left sidebar uses `e.clientX`, right panel uses `window.innerWidth - e.clientX`.
 - **Toolbar buttons in content area**: The toolbar column (ToC + Raw toggles) lives inside `MarkdownViewer.tsx`, positioned with `shrink-0 flex flex-col gap-2 -mr-4 -mt-4` to align with the header.
+- **Sidebar view modes**: Flat (default, with drag-and-drop reorder via dnd-kit) and tree (hierarchical directory view). View mode is persisted per-group in localStorage. Collapsed directory state is managed inside `TreeView` and also persisted per-group.
+- **localStorage conventions**: All keys use `mo-` prefix (e.g., `mo-sidebar-width`, `mo-sidebar-viewmode`, `mo-sidebar-tree-collapsed`, `mo-theme`). Read patterns use `try/catch` around `JSON.parse` with fallback defaults.
+
+## CI/CD
+
+- **CI**: golangci-lint (via reviewdog), gostyle, `make ci` (test + coverage), octocov
+- **Release**: tagpr for automated tagging, goreleaser for cross-platform builds. The `go generate` step (frontend build) runs in goreleaser's `before.hooks`.
+- **License check**: Trivy scans for license issues
+- CI requires pnpm setup (`pnpm/action-setup`) before any Go build step because `go generate` triggers the frontend build.
