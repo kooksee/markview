@@ -759,7 +759,6 @@ func TestHandleSSE_StartedEvent(t *testing.T) {
 
 	rec := &flushRecorder{pw: pw}
 	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 
 	req := httptest.NewRequest(http.MethodGet, "/_/events", nil).WithContext(ctx)
 
@@ -770,6 +769,10 @@ func TestHandleSSE_StartedEvent(t *testing.T) {
 		handler.ServeHTTP(rec, req)
 		pw.Close()
 	}()
+	t.Cleanup(func() {
+		cancel()
+		wg.Wait()
+	})
 
 	scanner := bufio.NewScanner(pr)
 	var eventLine, dataLine string
@@ -794,9 +797,6 @@ func TestHandleSSE_StartedEvent(t *testing.T) {
 	if dataLine != wantData {
 		t.Fatalf("got data line %q, want %q", dataLine, wantData)
 	}
-
-	cancel()
-	wg.Wait()
 }
 
 // flushRecorder implements http.ResponseWriter and http.Flusher,
