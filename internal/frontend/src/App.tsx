@@ -63,15 +63,11 @@ export function App() {
         setActiveGroup((currentGroup) => {
           const group = data.find((g) => g.name === currentGroup);
           if (group) {
-            const addedInGroup = added.filter((id) =>
-              group.files.some((f) => f.id === id),
-            );
-            if (addedInGroup.length > 0) {
-              // Select the last file in the group's list (most recently added)
-              const lastAdded = group.files.filter((f) => addedInGroup.includes(f.id));
-              if (lastAdded.length > 0) {
-                setActiveFileId(lastAdded[lastAdded.length - 1].id);
-              }
+            const addedSet = new Set(added);
+            // Select the last file in the group's list that was newly added
+            const matched = group.files.filter((f) => addedSet.has(f.id));
+            if (matched.length > 0) {
+              setActiveFileId(matched[matched.length - 1].id);
             }
           }
           return currentGroup;

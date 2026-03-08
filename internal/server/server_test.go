@@ -19,6 +19,12 @@ import (
 	"github.com/k1LoW/donegroup"
 )
 
+var (
+	testIDa = FileID("/a.md")
+	testIDb = FileID("/b.md")
+	testIDc = FileID("/c.md")
+)
+
 func newTestState(t *testing.T) *State {
 	t.Helper()
 	ctx, cancel := context.WithCancel(context.Background())
@@ -35,9 +41,9 @@ func newTestState(t *testing.T) *State {
 }
 
 func TestReorderFiles(t *testing.T) {
-	idA := FileID("/a.md")
-	idB := FileID("/b.md")
-	idC := FileID("/c.md")
+	idA := testIDa
+	idB := testIDb
+	idC := testIDc
 
 	t.Run("reorders files successfully", func(t *testing.T) {
 		s := newTestState(t)
@@ -103,9 +109,9 @@ func TestReorderFiles(t *testing.T) {
 }
 
 func TestMoveFile(t *testing.T) {
-	idA := FileID("/a.md")
-	idB := FileID("/b.md")
-	idC := FileID("/c.md")
+	idA := testIDa
+	idB := testIDb
+	idC := testIDc
 
 	t.Run("moves file to existing group", func(t *testing.T) {
 		s := newTestState(t)
@@ -209,8 +215,8 @@ func TestMoveFile(t *testing.T) {
 }
 
 func TestHandleMoveFile(t *testing.T) {
-	idA := FileID("/a.md")
-	idB := FileID("/b.md")
+	idA := testIDa
+	idB := testIDb
 
 	t.Run("moves file via HTTP", func(t *testing.T) {
 		s := newTestState(t)
@@ -306,7 +312,7 @@ func TestHandleShutdown(t *testing.T) {
 }
 
 func TestHandleRestart(t *testing.T) {
-	idA := FileID("/a.md")
+	idA := testIDa
 
 	t.Run("returns 202 and signals restartCh", func(t *testing.T) {
 		s := newTestState(t)
@@ -366,8 +372,8 @@ func TestHandleRestart(t *testing.T) {
 }
 
 func TestHandleReorderFiles(t *testing.T) {
-	idA := FileID("/a.md")
-	idB := FileID("/b.md")
+	idA := testIDa
+	idB := testIDb
 
 	t.Run("reorders files via HTTP", func(t *testing.T) {
 		s := newTestState(t)
