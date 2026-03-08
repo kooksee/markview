@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"crypto/sha256"
+	"errors"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -979,7 +980,8 @@ func handleUploadFile(state *State) http.HandlerFunc {
 		r.Body = http.MaxBytesReader(w, r.Body, maxRequestSize)
 		var req uploadFileRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			if err.Error() == "http: request body too large" {
+			var maxBytesErr *http.MaxBytesError
+			if errors.As(err, &maxBytesErr) {
 				http.Error(w, "file too large (max 10MB)", http.StatusRequestEntityTooLarge)
 				return
 			}
