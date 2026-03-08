@@ -26,7 +26,8 @@
 - <img src="images/icons/copy.svg" width="16" height="16" alt="copy"> Copy content (Markdown / Text / HTML)
 - <img src="images/icons/restart.svg" width="16" height="16" alt="restart"> Server restart with session preservation
 - Auto session backup and restore
-- Live-reload on save
+- Drag-and-drop file addition from the OS file manager (content is loaded in-memory; live-reload is not supported for dropped files)
+- Live-reload on save (for files opened via CLI)
 
 ## Install
 

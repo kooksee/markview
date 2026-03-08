@@ -7,6 +7,10 @@ function makeFile(id: string, path: string): FileEntry {
   return { id, name, path };
 }
 
+function makeUploadedFile(id: string, name: string): FileEntry {
+  return { id, name, path: "", uploaded: true };
+}
+
 describe("buildTree", () => {
   it("builds tree from multiple directories", () => {
     const files = [
@@ -98,5 +102,36 @@ describe("buildTree", () => {
     expect(root.children[0].file).toBeNull();
     expect(root.children[1].name).toBe("a-file.md");
     expect(root.children[2].name).toBe("z-file.md");
+  });
+
+  it("handles uploaded files (empty path) at root level", () => {
+    const files = [
+      makeUploadedFile("1", "uploaded.md"),
+      makeUploadedFile("2", "another.md"),
+    ];
+    const root = buildTree(files);
+
+    expect(root.children.length).toBe(2);
+    expect(root.children[0].name).toBe("another.md");
+    expect(root.children[0].file?.id).toBe("2");
+    expect(root.children[1].name).toBe("uploaded.md");
+    expect(root.children[1].file?.id).toBe("1");
+  });
+
+  it("mixes filesystem and uploaded files", () => {
+    const files = [
+      makeFile("1", "/docs/a.md"),
+      makeFile("2", "/docs/sub/b.md"),
+      makeUploadedFile("3", "dropped.md"),
+    ];
+    const root = buildTree(files);
+
+    // Should have: sub (dir), a.md (file), dropped.md (uploaded at root)
+    expect(root.children.length).toBe(3);
+    expect(root.children[0].name).toBe("sub");
+    expect(root.children[0].file).toBeNull();
+    expect(root.children[1].name).toBe("a.md");
+    expect(root.children[2].name).toBe("dropped.md");
+    expect(root.children[2].file?.id).toBe("3");
   });
 });

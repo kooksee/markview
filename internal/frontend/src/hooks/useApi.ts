@@ -2,6 +2,7 @@ export interface FileEntry {
   name: string;
   id: string;
   path: string;
+  uploaded?: boolean;
 }
 
 export interface Group {
@@ -70,6 +71,18 @@ export async function moveFile(id: string, group: string): Promise<void> {
   if (!res.ok) {
     const text = await res.text();
     throw new Error(text.trim() || "Failed to move file");
+  }
+}
+
+export async function uploadFile(name: string, content: string, group: string): Promise<void> {
+  const res = await fetch("/_/api/files/upload", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name, content, group }),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(text.trim() || "Failed to upload file");
   }
 }
 

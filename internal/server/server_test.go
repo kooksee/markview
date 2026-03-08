@@ -1020,6 +1020,261 @@ func TestEnableBackup_ReflectsLatestState(t *testing.T) {
 	}
 }
 
+func TestAddUploadedFile(t *testing.T) {
+	t.Run("adds uploaded file to group", func(t *testing.T) {
+		s := newTestState(t)
+		entry := s.AddUploadedFile("test.md", "# Hello", DefaultGroup)
+
+		if entry.Name != "test.md" {
+			t.Fatalf("got name %q, want %q", entry.Name, "test.md")
+		}
+		if !entry.Uploaded {
+			t.Fatal("entry should be marked as uploaded")
+		}
+		if entry.Path != "" {
+			t.Fatalf("uploaded file should have empty path, got %q", entry.Path)
+		}
+		if entry.content != "# Hello" {
+			t.Fatal("uploaded file content mismatch")
+		}
+		if len(s.groups[DefaultGroup].Files) != 1 {
+			t.Fatalf("got %d files, want 1", len(s.groups[DefaultGroup].Files))
+		}
+	})
+
+	t.Run("deduplicates by content", func(t *testing.T) {
+		s := newTestState(t)
+		e1 := s.AddUploadedFile("a.md", "# Same", DefaultGroup)
+		e2 := s.AddUploadedFile("b.md", "# Same", DefaultGroup)
+
+		if e1.ID != e2.ID {
+			t.Fatal("same content should produce same ID")
+		}
+		if len(s.groups[DefaultGroup].Files) != 1 {
+			t.Fatalf("got %d files, want 1 (dedup)", len(s.groups[DefaultGroup].Files))
+		}
+	})
+
+	t.Run("different content gets different IDs", func(t *testing.T) {
+		s := newTestState(t)
+		e1 := s.AddUploadedFile("a.md", "# A", DefaultGroup)
+		e2 := s.AddUploadedFile("b.md", "# B", DefaultGroup)
+
+		if e1.ID == e2.ID {
+			t.Fatal("different content should produce different IDs")
+		}
+		if len(s.groups[DefaultGroup].Files) != 2 {
+			t.Fatalf("got %d files, want 2", len(s.groups[DefaultGroup].Files))
+		}
+	})
+}
+
+func TestHandleUploadFile(t *testing.T) {
+	t.Run("uploads file via HTTP", func(t *testing.T) {
+		s := newTestState(t)
+		handler := NewHandler(s)
+
+		body, err := json.Marshal(uploadFileRequest{Name: "test.md", Content: "# Hello", Group: DefaultGroup})
+		if err != nil {
+			t.Fatal(err)
+		}
+		req := httptest.NewRequest("POST", "/_/api/files/upload", bytes.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+
+		handler.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Fatalf("got status %d, want %d", rec.Code, http.StatusOK)
+		}
+
+		var entry FileEntry
+		if err := json.NewDecoder(rec.Body).Decode(&entry); err != nil {
+			t.Fatal(err)
+		}
+		if !entry.Uploaded {
+			t.Fatal("response should have uploaded=true")
+		}
+		if entry.Name != "test.md" {
+			t.Fatalf("got name %q, want %q", entry.Name, "test.md")
+		}
+	})
+
+	t.Run("returns 413 for oversized content", func(t *testing.T) {
+		s := newTestState(t)
+		handler := NewHandler(s)
+
+		oversized := strings.Repeat("x", 10<<20+1) // 10MB + 1 byte
+		body, err := json.Marshal(uploadFileRequest{Name: "big.md", Content: oversized, Group: DefaultGroup})
+		if err != nil {
+			t.Fatal(err)
+		}
+		req := httptest.NewRequest("POST", "/_/api/files/upload", bytes.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+
+		handler.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusRequestEntityTooLarge {
+			t.Fatalf("got status %d, want %d", rec.Code, http.StatusRequestEntityTooLarge)
+		}
+	})
+
+	t.Run("returns 400 for missing name", func(t *testing.T) {
+		s := newTestState(t)
+		handler := NewHandler(s)
+
+		body, err := json.Marshal(uploadFileRequest{Name: "", Content: "# Hello", Group: DefaultGroup})
+		if err != nil {
+			t.Fatal(err)
+		}
+		req := httptest.NewRequest("POST", "/_/api/files/upload", bytes.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+
+		handler.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("got status %d, want %d", rec.Code, http.StatusBadRequest)
+		}
+	})
+}
+
+func TestUploadedFileContent(t *testing.T) {
+	t.Run("serves uploaded file content", func(t *testing.T) {
+		s := newTestState(t)
+		entry := s.AddUploadedFile("test.md", "# Uploaded Content", DefaultGroup)
+
+		handler := NewHandler(s)
+		req := httptest.NewRequest("GET", fmt.Sprintf("/_/api/files/%s/content", entry.ID), nil)
+		rec := httptest.NewRecorder()
+
+		handler.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Fatalf("got status %d, want %d", rec.Code, http.StatusOK)
+		}
+
+		var resp fileContentResponse
+		if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+			t.Fatal(err)
+		}
+		if resp.Content != "# Uploaded Content" {
+			t.Fatalf("got content %q, want %q", resp.Content, "# Uploaded Content")
+		}
+		if resp.BaseDir != "" {
+			t.Fatalf("uploaded file should have empty baseDir, got %q", resp.BaseDir)
+		}
+	})
+
+	t.Run("returns 404 for raw assets of uploaded file", func(t *testing.T) {
+		s := newTestState(t)
+		entry := s.AddUploadedFile("test.md", "# Hello", DefaultGroup)
+
+		handler := NewHandler(s)
+		req := httptest.NewRequest("GET", fmt.Sprintf("/_/api/files/%s/raw/image.png", entry.ID), nil)
+		rec := httptest.NewRecorder()
+
+		handler.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusNotFound {
+			t.Fatalf("got status %d, want %d", rec.Code, http.StatusNotFound)
+		}
+	})
+
+	t.Run("returns 400 for open relative file of uploaded file", func(t *testing.T) {
+		s := newTestState(t)
+		entry := s.AddUploadedFile("test.md", "# Hello", DefaultGroup)
+
+		handler := NewHandler(s)
+		body, err := json.Marshal(openFileRequest{FileID: entry.ID, Path: "./other.md"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		req := httptest.NewRequest("POST", "/_/api/files/open", bytes.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+
+		handler.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("got status %d, want %d", rec.Code, http.StatusBadRequest)
+		}
+	})
+}
+
+func TestMoveUploadedFile(t *testing.T) {
+	t.Run("moves uploaded file between groups", func(t *testing.T) {
+		s := newTestState(t)
+		entry := s.AddUploadedFile("test.md", "# Hello", "src")
+
+		if err := s.MoveFile(entry.ID, "dst"); err != nil {
+			t.Fatalf("MoveFile returned error: %v", err)
+		}
+
+		if _, ok := s.groups["src"]; ok {
+			t.Error("empty source group should have been deleted")
+		}
+		if len(s.groups["dst"].Files) != 1 {
+			t.Fatalf("got %d files in dst, want 1", len(s.groups["dst"].Files))
+		}
+		if !s.groups["dst"].Files[0].Uploaded {
+			t.Error("moved file should still be marked as uploaded")
+		}
+	})
+
+	t.Run("deduplicates across groups", func(t *testing.T) {
+		s := newTestState(t)
+		e1 := s.AddUploadedFile("a.md", "# Same", "src")
+		e2 := s.AddUploadedFile("b.md", "# Same", "dst")
+
+		if e1 != e2 {
+			t.Fatal("same content uploaded to different groups should return existing entry")
+		}
+		if _, ok := s.groups["dst"]; ok && len(s.groups["dst"].Files) > 0 {
+			t.Fatal("duplicate should not be added to dst group")
+		}
+	})
+}
+
+func TestSnapshotRestoreDataWithUploads(t *testing.T) {
+	t.Run("includes uploaded files in snapshot", func(t *testing.T) {
+		s := newTestState(t)
+
+		dir := t.TempDir()
+		fsFile := filepath.Join(dir, "fs.md")
+		os.WriteFile(fsFile, []byte("# FS"), 0o600) //nolint:errcheck
+		s.AddFile(fsFile, DefaultGroup)
+		s.AddUploadedFile("upload.md", "# Uploaded", DefaultGroup)
+
+		s.mu.RLock()
+		data := s.snapshotRestoreData()
+		s.mu.RUnlock()
+
+		// Filesystem file should be in Groups, not in UploadedFiles
+		if len(data.Groups[DefaultGroup]) != 1 {
+			t.Fatalf("got %d paths, want 1", len(data.Groups[DefaultGroup]))
+		}
+		if data.Groups[DefaultGroup][0] != fsFile {
+			t.Fatalf("got path %q, want %q", data.Groups[DefaultGroup][0], fsFile)
+		}
+
+		// Uploaded file should be in UploadedFiles
+		if len(data.UploadedFiles) != 1 {
+			t.Fatalf("got %d uploaded files, want 1", len(data.UploadedFiles))
+		}
+		if data.UploadedFiles[0].Name != "upload.md" {
+			t.Fatalf("got name %q, want %q", data.UploadedFiles[0].Name, "upload.md")
+		}
+		if data.UploadedFiles[0].Content != "# Uploaded" {
+			t.Fatalf("got content %q, want %q", data.UploadedFiles[0].Content, "# Uploaded")
+		}
+		if data.UploadedFiles[0].Group != DefaultGroup {
+			t.Fatalf("got group %q, want %q", data.UploadedFiles[0].Group, DefaultGroup)
+		}
+	})
+}
+
 func TestFileID(t *testing.T) {
 	id := FileID("/tmp/test.md")
 	if len(id) != 8 {

@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"crypto/sha256"
+	"errors"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -23,9 +24,11 @@ import (
 )
 
 type FileEntry struct {
-	Name string `json:"name"`
-	ID   string `json:"id"`
-	Path string `json:"path"`
+	Name     string `json:"name"`
+	ID       string `json:"id"`
+	Path     string `json:"path"`
+	Uploaded bool   `json:"uploaded,omitempty"`
+	content  string // in-memory content for uploaded files
 }
 
 // FileID generates a deterministic file ID from an absolute path.
@@ -138,6 +141,44 @@ func (s *State) AddFile(absPath, groupName string) *FileEntry {
 	return entry
 }
 
+func (s *State) AddUploadedFile(name, content, groupName string) *FileEntry {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	h := sha256.New()
+	h.Write([]byte("upload:"))
+	h.Write([]byte(content))
+	id := "u" + hex.EncodeToString(h.Sum(nil))[:7]
+
+	// Check all groups for an existing entry with the same ID
+	for _, grp := range s.groups {
+		for _, f := range grp.Files {
+			if f.ID == id {
+				return f
+			}
+		}
+	}
+
+	g, ok := s.groups[groupName]
+	if !ok {
+		g = &Group{Name: groupName}
+		s.groups[groupName] = g
+	}
+
+	entry := &FileEntry{
+		Name:     name,
+		ID:       id,
+		Uploaded: true,
+		content:  content,
+	}
+	g.Files = append(g.Files, entry)
+
+	slog.Info("uploaded file added", "name", name, "group", groupName, "id", entry.ID)
+
+	s.sendEvent(sseEvent{Name: eventUpdate, Data: "{}"})
+	return entry
+}
+
 func (s *State) Groups() []Group {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -238,11 +279,17 @@ func (s *State) MoveFile(id string, targetGroup string) error {
 		return fmt.Errorf("file is already in group %q", targetGroup)
 	}
 
-	// Check for duplicate path in target group
+	// Check for duplicate in target group (by path for filesystem files, by ID for uploaded files)
 	if tg, ok := s.groups[targetGroup]; ok {
 		for _, f := range tg.Files {
-			if f.Path == file.Path {
-				return fmt.Errorf("file %q already exists in group %q", file.Name, targetGroup)
+			if file.Uploaded {
+				if f.ID == file.ID {
+					return fmt.Errorf("file %q already exists in group %q", file.Name, targetGroup)
+				}
+			} else {
+				if f.Path == file.Path {
+					return fmt.Errorf("file %q already exists in group %q", file.Name, targetGroup)
+				}
 			}
 		}
 	}
@@ -482,10 +529,18 @@ func (s *State) RemovePattern(absPattern, groupName string) bool {
 	return true
 }
 
+// UploadedFileData represents an uploaded file's content for persistence.
+type UploadedFileData struct {
+	Name    string `json:"name"`
+	Content string `json:"content"`
+	Group   string `json:"group"`
+}
+
 // RestoreData represents the state to be persisted across restarts.
 type RestoreData struct {
-	Groups   map[string][]string `json:"groups"`
-	Patterns map[string][]string `json:"patterns,omitempty"`
+	Groups        map[string][]string `json:"groups"`
+	Patterns      map[string][]string `json:"patterns,omitempty"`
+	UploadedFiles []UploadedFileData  `json:"uploadedFiles,omitempty"`
 }
 
 // WriteRestoreFile writes RestoreData to a temporary file and returns the path.
@@ -533,6 +588,14 @@ func (s *State) snapshotRestoreData() RestoreData {
 	for name, g := range s.groups {
 		paths := make([]string, 0, len(g.Files))
 		for _, f := range g.Files {
+			if f.Uploaded {
+				data.UploadedFiles = append(data.UploadedFiles, UploadedFileData{
+					Name:    f.Name,
+					Content: f.content,
+					Group:   name,
+				})
+				continue
+			}
 			paths = append(paths, f.Path)
 		}
 		data.Groups[name] = paths
@@ -826,6 +889,12 @@ type addFileRequest struct {
 	Group string `json:"group"`
 }
 
+type uploadFileRequest struct {
+	Name    string `json:"name"`
+	Content string `json:"content"`
+	Group   string `json:"group"`
+}
+
 type patternRequest struct {
 	Pattern string `json:"pattern"`
 	Group   string `json:"group"`
@@ -851,6 +920,7 @@ func NewHandler(state *State) http.Handler {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("POST /_/api/files", handleAddFile(state))
+	mux.HandleFunc("POST /_/api/files/upload", handleUploadFile(state))
 	mux.HandleFunc("DELETE /_/api/files/{id}", handleRemoveFile(state))
 	mux.HandleFunc("PUT /_/api/files/{id}/group", handleMoveFile(state))
 	mux.HandleFunc("GET /_/api/groups", handleGroups(state))
@@ -896,6 +966,46 @@ func handleAddFile(state *State) http.HandlerFunc {
 		}
 
 		entry := state.AddFile(absPath, group)
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(entry); err != nil {
+			slog.Error("failed to encode response", "error", err)
+		}
+	}
+}
+
+func handleUploadFile(state *State) http.HandlerFunc {
+	const maxRequestSize = 12 << 20  // 12MB (headroom for JSON envelope)
+	const maxContentSize = 10 << 20  // 10MB
+	return func(w http.ResponseWriter, r *http.Request) {
+		r.Body = http.MaxBytesReader(w, r.Body, maxRequestSize)
+		var req uploadFileRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			var maxBytesErr *http.MaxBytesError
+			if errors.As(err, &maxBytesErr) {
+				http.Error(w, "file too large (max 10MB)", http.StatusRequestEntityTooLarge)
+				return
+			}
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		if len(req.Content) > maxContentSize {
+			http.Error(w, "file too large (max 10MB)", http.StatusRequestEntityTooLarge)
+			return
+		}
+
+		if req.Name == "" {
+			http.Error(w, "missing file name", http.StatusBadRequest)
+			return
+		}
+
+		group, err := ResolveGroupName(req.Group)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		entry := state.AddUploadedFile(req.Name, req.Content, group)
 		w.Header().Set("Content-Type", "application/json")
 		if err := json.NewEncoder(w).Encode(entry); err != nil {
 			slog.Error("failed to encode response", "error", err)
@@ -987,15 +1097,22 @@ func handleFileContent(state *State) http.HandlerFunc {
 			return
 		}
 
-		content, err := os.ReadFile(entry.Path) //nolint:gosec // Path is server-managed, not user-supplied
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-
-		resp := fileContentResponse{
-			Content: string(content),
-			BaseDir: filepath.Dir(entry.Path),
+		var resp fileContentResponse
+		if entry.Uploaded {
+			resp = fileContentResponse{
+				Content: entry.content,
+				BaseDir: "",
+			}
+		} else {
+			content, err := os.ReadFile(entry.Path) //nolint:gosec // Path is server-managed, not user-supplied
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			resp = fileContentResponse{
+				Content: string(content),
+				BaseDir: filepath.Dir(entry.Path),
+			}
 		}
 		w.Header().Set("Content-Type", "application/json")
 		if err := json.NewEncoder(w).Encode(resp); err != nil {
@@ -1015,6 +1132,11 @@ func handleFileRaw(state *State) http.HandlerFunc {
 		entry := state.FindFile(id)
 		if entry == nil {
 			http.Error(w, "file not found", http.StatusNotFound)
+			return
+		}
+
+		if entry.Uploaded {
+			http.Error(w, "raw assets not available for uploaded files", http.StatusNotFound)
 			return
 		}
 
@@ -1044,6 +1166,11 @@ func handleOpenFile(state *State) http.HandlerFunc {
 		entry := state.FindFile(req.FileID)
 		if entry == nil {
 			http.Error(w, "source file not found", http.StatusNotFound)
+			return
+		}
+
+		if entry.Uploaded {
+			http.Error(w, "relative links not available for uploaded files", http.StatusBadRequest)
 			return
 		}
 
