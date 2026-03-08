@@ -165,6 +165,46 @@ $ mo --clear                      # Clear saved session for the default port
 $ mo --clear -p 6276              # Clear saved session for a specific port
 ```
 
+### JSON output
+
+Use `--json` to get structured JSON output on stdout, useful for scripting and integration with other tools.
+
+``` console
+$ mo --json README.md
+{
+  "url": "http://localhost:6275",
+  "files": [
+    {
+      "url": "http://localhost:6275/?file=a1b2c3d4",
+      "name": "README.md",
+      "path": "/Users/you/project/README.md"
+    }
+  ]
+}
+```
+
+`--status` also supports `--json`:
+
+``` console
+$ mo --status --json
+[
+  {
+    "url": "http://localhost:6275",
+    "status": "running",
+    "pid": 12345,
+    "version": "0.15.0",
+    "revision": "abc1234",
+    "groups": [
+      {
+        "name": "default",
+        "files": 3,
+        "patterns": ["**/*.md"]
+      }
+    ]
+  }
+]
+```
+
 ### Flags
 
 | Flag | Short | Default | Description |
@@ -180,6 +220,7 @@ $ mo --clear -p 6276              # Clear saved session for a specific port
 | `--restart` | | | Restart the running mo server |
 | `--clear` | | | Clear saved session for the specified port |
 | `--foreground` | | | Run mo server in foreground |
+| `--json` | | | Output structured data as JSON to stdout |
 
 ## Build
 
