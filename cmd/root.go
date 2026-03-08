@@ -48,6 +48,7 @@ var (
 	watchPatterns   []string
 	unwatchPatterns []string
 	clearBackup     bool
+	jsonOutput      bool
 )
 
 var rootCmd = &cobra.Command{
@@ -157,6 +158,7 @@ func init() {
 	rootCmd.Flags().StringArrayVarP(&watchPatterns, "watch", "w", nil, "Glob pattern to watch for matching files (repeatable)")
 	rootCmd.Flags().StringArrayVar(&unwatchPatterns, "unwatch", nil, "Remove a watched glob pattern (repeatable)")
 	rootCmd.Flags().BoolVar(&clearBackup, "clear", false, "Clear saved session for the specified port")
+	rootCmd.Flags().BoolVar(&jsonOutput, "json", false, "Output structured data as JSON to stdout")
 }
 
 func run(cmd *cobra.Command, args []string) error {
@@ -421,8 +423,8 @@ func tryAddToExisting(addr string, files []string, patterns []string) bool {
 
 	added := len(files) + len(patterns)
 	slog.Info("added to existing server", "files", len(files), "patterns", len(patterns), "addr", addr)
+	emitServeOutput(addr, deeplinks, false)
 	fmt.Fprintf(os.Stderr, "mo: added %d item(s) to http://%s\n", added, addr)
-	printDeeplinks(deeplinks)
 
 	if isNewGroup || open {
 		openBrowser(addr)
@@ -515,7 +517,56 @@ func postPatterns(client *http.Client, addr, group string, patterns []string) []
 
 type deeplinkEntry struct {
 	URL  string
-	Path string // absolute file path for display name computation
+	Path string // absolute file path (empty for uploaded files)
+	Name string // display name fallback when Path is empty
+}
+
+// JSON output types
+
+type jsonFileEntry struct {
+	URL  string `json:"url"`
+	Name string `json:"name"`
+	Path string `json:"path"`
+}
+
+type jsonServeOutput struct {
+	URL   string          `json:"url"`
+	Files []jsonFileEntry `json:"files"`
+}
+
+type jsonStatusGroupEntry struct {
+	Name     string   `json:"name"`
+	Files    int      `json:"files"`
+	Patterns []string `json:"patterns,omitempty"`
+}
+
+type jsonStatusEntry struct {
+	URL      string                 `json:"url"`
+	Status   string                 `json:"status"`
+	PID      int                    `json:"pid,omitempty"`
+	Version  string                 `json:"version,omitempty"`
+	Revision string                 `json:"revision,omitempty"`
+	Groups   []jsonStatusGroupEntry `json:"groups,omitempty"`
+}
+
+func writeJSON(v any) {
+	enc := json.NewEncoder(os.Stdout)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(v); err != nil {
+		slog.Warn("failed to write JSON output", "error", err)
+	}
+}
+
+func deeplinksToJSON(entries []deeplinkEntry) []jsonFileEntry {
+	if len(entries) == 0 {
+		return []jsonFileEntry{}
+	}
+	names := deeplinkDisplayNames(entries)
+	result := make([]jsonFileEntry, len(entries))
+	for i, e := range entries {
+		result[i] = jsonFileEntry{URL: e.URL, Name: names[i], Path: e.Path}
+	}
+	return result
 }
 
 func buildDeeplink(addr, groupName, fileID string) string {
@@ -564,17 +615,43 @@ func displayNames(paths []string) []string {
 	return names
 }
 
+// deeplinkDisplayNames computes display names for deeplink entries,
+// using Name as fallback when Path is empty (uploaded files).
+func deeplinkDisplayNames(entries []deeplinkEntry) []string {
+	var pathEntries []string
+	for _, e := range entries {
+		if e.Path != "" {
+			pathEntries = append(pathEntries, e.Path)
+		} else {
+			pathEntries = append(pathEntries, e.Name)
+		}
+	}
+	return displayNames(pathEntries)
+}
+
 func printDeeplinks(entries []deeplinkEntry) {
 	if len(entries) == 0 {
 		return
 	}
-	paths := make([]string, len(entries))
+	names := deeplinkDisplayNames(entries)
 	for i, e := range entries {
-		paths[i] = e.Path
+		fmt.Printf("  %s  %s\n", e.URL, names[i])
 	}
-	names := displayNames(paths)
-	for i, e := range entries {
-		fmt.Fprintf(os.Stderr, "  %s  %s\n", e.URL, names[i])
+}
+
+// emitServeOutput writes the serve result (server URL + deeplinks) to stdout.
+// In JSON mode it emits a single JSON object; in text mode it prints the URL and deeplinks.
+func emitServeOutput(addr string, deeplinks []deeplinkEntry, printURL bool) {
+	if jsonOutput {
+		writeJSON(jsonServeOutput{
+			URL:   fmt.Sprintf("http://%s", addr),
+			Files: deeplinksToJSON(deeplinks),
+		})
+	} else {
+		if printURL {
+			fmt.Fprintf(os.Stdout, "http://%s\n", addr)
+		}
+		printDeeplinks(deeplinks)
 	}
 }
 
@@ -720,22 +797,34 @@ type statusResponse struct {
 func doStatus() error {
 	ports := discoverPorts()
 	if len(ports) == 0 {
-		fmt.Fprintln(os.Stderr, "mo: no mo server found")
+		if jsonOutput {
+			writeJSON([]jsonStatusEntry{})
+		} else {
+			fmt.Fprintln(os.Stderr, "mo: no mo server found")
+		}
 		return nil
 	}
 
 	client := &http.Client{Timeout: 2 * time.Second}
 	found := false
+	var jsonEntries []jsonStatusEntry
 
 	for i, p := range ports {
 		addr := fmt.Sprintf("localhost:%d", p)
 		resp, err := client.Get(fmt.Sprintf("http://%s/_/api/status", addr))
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "http://%s (stopped)\n", addr)
-			if i < len(ports)-1 {
-				fmt.Fprintln(os.Stderr)
-			}
 			found = true
+			if jsonOutput {
+				jsonEntries = append(jsonEntries, jsonStatusEntry{
+					URL:    fmt.Sprintf("http://%s", addr),
+					Status: "stopped",
+				})
+			} else {
+				fmt.Fprintf(os.Stdout, "http://%s (stopped)\n", addr)
+				if i < len(ports)-1 {
+					fmt.Fprintln(os.Stdout)
+				}
+			}
 			continue
 		}
 
@@ -747,23 +836,46 @@ func doStatus() error {
 		resp.Body.Close()
 		found = true
 
-		ver := status.Version
-		if status.Revision != "" {
-			ver += " " + status.Revision
-		}
-		fmt.Fprintf(os.Stderr, "http://%s (pid %d, %s)\n", addr, status.PID, ver)
-		for _, g := range status.Groups {
-			fmt.Fprintf(os.Stderr, "  %s: %d file(s)\n", g.Name, len(g.Files))
-			if len(g.Patterns) > 0 {
-				fmt.Fprintf(os.Stderr, "    watching: %s\n", strings.Join(g.Patterns, ", "))
+		if jsonOutput {
+			entry := jsonStatusEntry{
+				URL:      fmt.Sprintf("http://%s", addr),
+				Status:   "running",
+				PID:      status.PID,
+				Version:  status.Version,
+				Revision: status.Revision,
 			}
-		}
-		if i < len(ports)-1 {
-			fmt.Fprintln(os.Stderr)
+			for _, g := range status.Groups {
+				entry.Groups = append(entry.Groups, jsonStatusGroupEntry{
+					Name:     g.Name,
+					Files:    len(g.Files),
+					Patterns: g.Patterns,
+				})
+			}
+			jsonEntries = append(jsonEntries, entry)
+		} else {
+			ver := status.Version
+			if status.Revision != "" {
+				ver += " " + status.Revision
+			}
+			fmt.Fprintf(os.Stdout, "http://%s (pid %d, %s)\n", addr, status.PID, ver)
+			for _, g := range status.Groups {
+				fmt.Fprintf(os.Stdout, "  %s: %d file(s)\n", g.Name, len(g.Files))
+				if len(g.Patterns) > 0 {
+					fmt.Fprintf(os.Stdout, "    watching: %s\n", strings.Join(g.Patterns, ", "))
+				}
+			}
+			if i < len(ports)-1 {
+				fmt.Fprintln(os.Stdout)
+			}
 		}
 	}
 
-	if !found {
+	if jsonOutput {
+		if !found {
+			jsonEntries = []jsonStatusEntry{}
+		}
+		writeJSON(jsonEntries)
+	} else if !found {
 		fmt.Fprintln(os.Stderr, "mo: no mo server found")
 	}
 
@@ -852,8 +964,6 @@ func startServer(ctx context.Context, addr string, filesByGroup map[string][]str
 		}
 	}
 
-	printDeeplinks(deeplinks)
-
 	for _, uf := range uploadedFiles {
 		state.AddUploadedFile(uf.Name, uf.Content, uf.Group)
 	}
@@ -870,6 +980,8 @@ func startServer(ctx context.Context, addr string, filesByGroup map[string][]str
 	if err != nil {
 		return fmt.Errorf("cannot listen on %s: %w", addr, err)
 	}
+
+	emitServeOutput(addr, deeplinks, true)
 
 	if err := donegroup.Cleanup(ctx, func() error {
 		state.CloseAllSubscribers()
@@ -949,20 +1061,20 @@ func startBackground(addr string, filesByGroup map[string][]string, patternsByGr
 		return fmt.Errorf("%w (pid %d)", err, pid)
 	}
 
-	fmt.Fprintf(os.Stderr, "mo: serving at http://%s (pid %d)\n", addr, pid)
-
+	var deeplinks []deeplinkEntry
 	if status != nil {
-		var deeplinks []deeplinkEntry
 		for _, g := range status.Groups {
 			for _, f := range g.Files {
 				deeplinks = append(deeplinks, deeplinkEntry{
 					URL:  buildDeeplink(addr, g.Name, f.ID),
 					Path: f.Path,
+					Name: f.Name,
 				})
 			}
 		}
-		printDeeplinks(deeplinks)
 	}
+	emitServeOutput(addr, deeplinks, true)
+	fmt.Fprintf(os.Stderr, "mo: serving at http://%s (pid %d)\n", addr, pid)
 
 	openBrowser(addr)
 
