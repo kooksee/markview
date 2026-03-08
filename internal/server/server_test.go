@@ -1100,6 +1100,26 @@ func TestHandleUploadFile(t *testing.T) {
 		}
 	})
 
+	t.Run("returns 413 for oversized content", func(t *testing.T) {
+		s := newTestState(t)
+		handler := NewHandler(s)
+
+		oversized := strings.Repeat("x", 10<<20+1) // 10MB + 1 byte
+		body, err := json.Marshal(uploadFileRequest{Name: "big.md", Content: oversized, Group: DefaultGroup})
+		if err != nil {
+			t.Fatal(err)
+		}
+		req := httptest.NewRequest("POST", "/_/api/files/upload", bytes.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+
+		handler.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusRequestEntityTooLarge {
+			t.Fatalf("got status %d, want %d", rec.Code, http.StatusRequestEntityTooLarge)
+		}
+	})
+
 	t.Run("returns 400 for missing name", func(t *testing.T) {
 		s := newTestState(t)
 		handler := NewHandler(s)

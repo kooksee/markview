@@ -973,12 +973,22 @@ func handleAddFile(state *State) http.HandlerFunc {
 }
 
 func handleUploadFile(state *State) http.HandlerFunc {
-	const maxUploadSize = 12 << 20 // 12MB (headroom for JSON envelope around 10MB content)
+	const maxRequestSize = 12 << 20  // 12MB (headroom for JSON envelope)
+	const maxContentSize = 10 << 20  // 10MB
 	return func(w http.ResponseWriter, r *http.Request) {
-		r.Body = http.MaxBytesReader(w, r.Body, maxUploadSize)
+		r.Body = http.MaxBytesReader(w, r.Body, maxRequestSize)
 		var req uploadFileRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			if err.Error() == "http: request body too large" {
+				http.Error(w, "file too large (max 10MB)", http.StatusRequestEntityTooLarge)
+				return
+			}
 			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		if len(req.Content) > maxContentSize {
+			http.Error(w, "file too large (max 10MB)", http.StatusRequestEntityTooLarge)
 			return
 		}
 
