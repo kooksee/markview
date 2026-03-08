@@ -1,5 +1,15 @@
 # Changelog
 
+## [v0.16.0](https://github.com/k1LoW/mo/compare/v0.15.2...v0.16.0) - 2026-03-08
+### Breaking Changes 🛠
+- feat: display deeplinks when adding files via CLI by @k1LoW in https://github.com/k1LoW/mo/pull/86
+- feat: route processable output to stdout and add --json flag by @k1LoW in https://github.com/k1LoW/mo/pull/87
+### New Features 🎉
+- feat: add LaTeX/math rendering support with KaTeX by @ysaito8015 in https://github.com/k1LoW/mo/pull/84
+- feat: add drag-and-drop file addition from OS file manager by @k1LoW in https://github.com/k1LoW/mo/pull/85
+### Other Changes
+- feat: use deterministic hash-based file IDs for deep linking by @k1LoW in https://github.com/k1LoW/mo/pull/81
+
 ## [v0.15.2](https://github.com/k1LoW/mo/compare/v0.15.1...v0.15.2) - 2026-03-07
 ### Other Changes
 - fix: always restore backup when starting a new server by @k1LoW in https://github.com/k1LoW/mo/pull/80
