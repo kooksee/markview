@@ -66,7 +66,6 @@ Examples:
   mo README.md CHANGELOG.md docs/*.md   Open multiple files
   mo spec.md --target design            Open in a named group
   mo draft.md --port 6276               Use a different port
-  mo README.md --bind 0.0.0.0           Listen on all interfaces
 
 Single Server, Multiple Files:
   By default, mo runs a single server on port 6275.
@@ -133,7 +132,13 @@ Glob Patterns:
   $ mo -w '**/*.md'                   Watch all .md files recursively
   $ mo -w 'docs/**/*.md' -t docs      Watch docs/ tree in "docs" group
   $ mo -w '*.md' -w 'docs/**/*.md'    Watch multiple patterns
-  $ mo --unwatch '**/*.md'            Stop watching a pattern`,
+  $ mo --unwatch '**/*.md'            Stop watching a pattern
+
+WARNING: --bind with a non-loopback address:
+  Binding to a non-localhost address (e.g. 0.0.0.0) exposes mo to the
+  network without any authentication. Remote clients can read any file
+  accessible by this user, browse the filesystem via glob patterns, and
+  shut down the server. A confirmation prompt is shown before starting.`,
 	Args:    cobra.ArbitraryArgs,
 	RunE:    run,
 	Version: version.Version,

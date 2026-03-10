@@ -47,7 +47,6 @@ Download binary from [releases page](https://github.com/k1LoW/mo/releases)
 $ mo README.md                          # Open a single file
 $ mo README.md CHANGELOG.md docs/*.md   # Open multiple files
 $ mo spec.md --target design            # Open in a named group
-$ mo README.md --bind 0.0.0.0           # Listen on all interfaces
 ```
 
 `mo` opens Markdown files in a browser with live-reload. When you save a file, the browser automatically reflects the changes.
@@ -223,6 +222,9 @@ $ mo --status --json
 | `--clear` | | | Clear saved session for the specified port |
 | `--foreground` | | | Run mo server in foreground |
 | `--json` | | | Output structured data as JSON to stdout |
+
+> [!WARNING]
+> Binding to a non-localhost address exposes mo to the network **without any authentication**. Remote clients can read any file accessible by the user, browse the filesystem via glob patterns, and shut down the server. A confirmation prompt is shown when `--bind` is set to a non-loopback address.
 
 ## Build
 
