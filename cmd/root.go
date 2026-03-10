@@ -38,6 +38,7 @@ const (
 var (
 	target          string
 	port            int
+	bind            string
 	open            bool
 	noOpen          bool
 	restore         string
@@ -64,6 +65,7 @@ Examples:
   mo README.md CHANGELOG.md docs/*.md   Open multiple files
   mo spec.md --target design            Open in a named group
   mo draft.md --port 6276               Use a different port
+  mo README.md --bind 0.0.0.0           Listen on all interfaces
 
 Single Server, Multiple Files:
   By default, mo runs a single server on port 6275.
@@ -145,6 +147,7 @@ func Execute() {
 func init() {
 	rootCmd.Flags().StringVarP(&target, "target", "t", server.DefaultGroup, "Tab group name")
 	rootCmd.Flags().IntVarP(&port, "port", "p", 6275, "Server port")
+	rootCmd.Flags().StringVarP(&bind, "bind", "b", "localhost", "Bind address (e.g. localhost, 0.0.0.0)")
 	rootCmd.Flags().BoolVar(&open, "open", false, "Always open browser (even when adding to existing group)")
 	rootCmd.Flags().BoolVar(&noOpen, "no-open", false, "Do not open browser automatically")
 	rootCmd.MarkFlagsMutuallyExclusive("open", "no-open")
@@ -171,7 +174,7 @@ func run(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	addr := fmt.Sprintf("localhost:%d", port)
+	addr := fmt.Sprintf("%s:%d", bind, port)
 
 	if clearBackup {
 		if !backup.Exists(port) {
@@ -1024,12 +1027,12 @@ func spawnNewProcess(addr string, restoreFile string) (*os.Process, error) {
 		return nil, fmt.Errorf("cannot find binary: %w", err)
 	}
 
-	_, p, err := net.SplitHostPort(addr)
+	h, p, err := net.SplitHostPort(addr)
 	if err != nil {
 		return nil, fmt.Errorf("cannot parse addr: %w", err)
 	}
 
-	cmd := exec.Command(binPath, "--port", p, "--no-open", "--foreground", "--restore", restoreFile) //nolint:gosec
+	cmd := exec.Command(binPath, "--port", p, "--bind", h, "--no-open", "--foreground", "--restore", restoreFile) //nolint:gosec
 	setSysProcAttr(cmd)
 	if err := cmd.Start(); err != nil {
 		return nil, fmt.Errorf("failed to start new process: %w", err)

@@ -47,6 +47,7 @@ Download binary from [releases page](https://github.com/k1LoW/mo/releases)
 $ mo README.md                          # Open a single file
 $ mo README.md CHANGELOG.md docs/*.md   # Open multiple files
 $ mo spec.md --target design            # Open in a named group
+$ mo README.md --bind 0.0.0.0           # Listen on all interfaces
 ```
 
 `mo` opens Markdown files in a browser with live-reload. When you save a file, the browser automatically reflects the changes.
@@ -211,6 +212,7 @@ $ mo --status --json
 |------|-------|---------|-------------|
 | `--target` | `-t` | `default` | Group name |
 | `--port` | `-p` | `6275` | Server port |
+| `--bind` | `-b` | `localhost` | Bind address (e.g. `0.0.0.0`) |
 | `--open` | | | Always open browser |
 | `--no-open` | | | Never open browser |
 | `--status` | | | Show all running mo servers |
