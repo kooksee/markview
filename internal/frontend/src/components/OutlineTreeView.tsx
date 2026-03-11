@@ -159,7 +159,7 @@ function findRootFiles(outline: Outline): OutlineFile[] {
   return outline.files.filter((f) => !linkedTo.has(f.id));
 }
 
-/** 默认折叠：H2（二级标题）和链接节点；展开根、文件、H1。 */
+/** 默认折叠：H2 和链接节点；文档名、H1 展开以展示层级。点击时只展开当前节点。 */
 function collectDefaultCollapsedIds(outline: Outline): Set<string> {
   const ids = new Set<string>();
   const fileIds = new Set(outline.files.map((f) => f.id));
@@ -221,29 +221,17 @@ function outlineToTreeData(outline: Outline, collapsedIds: Set<string>): TreeDat
 
       const fileId = `fl_${file.id.replace(/-/g, "_")}`;
       const fileCollapsed = collapsedIds.has(fileId);
-      const h1List = file.headings.filter((h) => h.level === 1);
-      const firstH1 = h1List[0]?.text;
-      const singleH1 = h1Nodes.length === 1 ? h1Nodes[0] : null;
-      const mergeFileAndH1 = singleH1 !== null;
-      const fileLabel = mergeFileAndH1 ? (firstH1 ?? file.name) : (h1List.length > 1 && firstH1 ? firstH1 : file.name);
-      const fileChildren =
-        mergeFileAndH1 && !fileCollapsed
-          ? singleH1?.children
-          : h1Nodes.length > 0 && !fileCollapsed
-            ? h1Nodes
-            : undefined;
       return {
         id: fileId,
         data: {
-          value: fileLabel,
+          value: file.name,
           fileId: file.id,
           group: file.group,
           isFile: true,
-          isH1: mergeFileAndH1,
-          hasChildren: (mergeFileAndH1 ? (singleH1?.children?.length ?? 0) : h1Nodes.length) > 0,
+          hasChildren: h1Nodes.length > 0,
           fileColorIndex,
         },
-        children: fileChildren,
+        children: h1Nodes.length > 0 && !fileCollapsed ? h1Nodes : undefined,
       };
     },
   );

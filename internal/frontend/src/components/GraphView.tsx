@@ -46,6 +46,17 @@ function edgeDisplayLabel(e: { label?: string; heading?: string }, targetName: s
   return safe(targetName).slice(0, maxLen);
 }
 
+/** Merge duplicate edges: same (from, to) -> keep first. */
+function mergeEdges(edges: LinkGraph["edges"]): LinkGraph["edges"] {
+  const seen = new Set<string>();
+  return edges.filter((e) => {
+    const key = `${e.from}->${e.to}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 function buildMermaidFlowchart(graph: LinkGraph): string {
   // LR: 一个文件引用多个文件时，被引用的多个文件在右侧并列展示
   const lines: string[] = ["flowchart LR"];
@@ -58,7 +69,8 @@ function buildMermaidFlowchart(graph: LinkGraph): string {
     const label = escapeMermaidLabel(displayLabels.get(n.id) ?? n.name);
     lines.push(`  ${n.id}[${label}]`);
   }
-  for (const e of graph.edges) {
+  const edges = mergeEdges(graph.edges);
+  for (const e of edges) {
     if (nodeIds.has(e.from) && nodeIds.has(e.to)) {
       const targetName = nodeByName.get(e.to) ?? e.to;
       const lab = edgeDisplayLabel(e, targetName);
