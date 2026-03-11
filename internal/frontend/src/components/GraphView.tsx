@@ -33,15 +33,15 @@ function nodeDisplayLabels(nodes: { id: string; name: string; path?: string }[])
   return labels;
 }
 
-/** Build edge label: heading only when available. */
+/** Build edge label: link text (label) first, then heading, then target name. */
 function edgeDisplayLabel(e: { label?: string; heading?: string }, targetName: string, maxLen = 32): string {
   const safe = (s: string) => s.replace(/["\[\]()|]/g, " ").trim();
-  if (e.heading) {
-    return safe(e.heading).slice(0, maxLen);
-  }
   if (e.label && e.label.length > 0) {
     const lab = safe(e.label);
     if (lab) return lab.slice(0, maxLen);
+  }
+  if (e.heading) {
+    return safe(e.heading).slice(0, maxLen);
   }
   return safe(targetName).slice(0, maxLen);
 }

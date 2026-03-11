@@ -137,6 +137,8 @@ func (s *State) BuildGraph() Graph {
 		}
 	}
 
+	// edgeKey -> first label/heading for merge; same (from,to) keeps one edge
+	edgeMap := make(map[string]*GraphEdge)
 	for _, g := range s.groups {
 		for _, entry := range g.Files {
 			content, baseDir := s.fileContentLocked(entry)
@@ -148,15 +150,21 @@ func (s *State) BuildGraph() Graph {
 				absPath = filepath.Clean(absPath)
 				targetID := FileID(absPath)
 				if targetEntry := s.findFileByIDLocked(targetID); targetEntry != nil {
-					edges = append(edges, GraphEdge{
-						From:    entry.ID,
-						To:      targetID,
-						Label:   strings.TrimSpace(lh.linkText),
-						Heading: strings.TrimSpace(lh.heading),
-					})
+					key := entry.ID + "->" + targetID
+					if _, ok := edgeMap[key]; !ok {
+						edgeMap[key] = &GraphEdge{
+							From:    entry.ID,
+							To:      targetID,
+							Label:   strings.TrimSpace(lh.linkText),
+							Heading: strings.TrimSpace(lh.heading),
+						}
+					}
 				}
 			}
 		}
+	}
+	for _, e := range edgeMap {
+		edges = append(edges, *e)
 	}
 
 	nodes := make([]GraphNode, 0, len(nodeMap))
