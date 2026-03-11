@@ -21,6 +21,7 @@ import { allFileIds, parseGroupFromPath, parseFileIdFromSearch, groupToPath, bui
 import { getAllFileIdsUnder, type TreeNode } from "./utils/buildTree";
 import { OutlineGraphView } from "./components/OutlineGraphView";
 import { OutlineGravityView } from "./components/OutlineGravityView";
+import { OutlineTreeView } from "./components/OutlineTreeView";
 
 const VIEWMODE_STORAGE_KEY = "mo-sidebar-viewmode";
 const WIDTH_STORAGE_KEY = "mo-layout-width";
@@ -53,7 +54,7 @@ export function App() {
     }
   });
   const [showGraph, setShowGraph] = useState(false);
-  const [graphViewMode, setGraphViewMode] = useState<"link" | "outline" | "gravity">("link");
+  const [graphViewMode, setGraphViewMode] = useState<"link" | "outline" | "gravity" | "tree">("link");
   const [status, setStatus] = useState<Status | null>(null);
   const knownFileIds = useRef<Set<string>>(new Set());
   const [initialFileId, setInitialFileId] = useState<string | null>(() => {
@@ -383,6 +384,23 @@ export function App() {
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 2v4m0 12v4M2 12h4m12 0h4m-3.5-8.5l2.5 2.5m-9 9l2.5 2.5m0-9l-2.5 2.5m9-9l-2.5 2.5" />
             </svg>
           </button>
+          <button
+            type="button"
+            className={`flex items-center justify-center rounded-md p-1.5 cursor-pointer transition-colors duration-150 border ${
+              showGraph && graphViewMode === "tree" ? "bg-gh-bg-hover border-gh-border" : "bg-transparent border-gh-border hover:bg-gh-bg-hover"
+            } text-gh-header-text`}
+            onClick={() => {
+              setGraphViewMode("tree");
+              setShowGraph(true);
+            }}
+            aria-label="Indented tree"
+            aria-pressed={showGraph && graphViewMode === "tree"}
+            title="缩进树"
+          >
+            <svg className="size-5" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-7.5-5.25H12" />
+            </svg>
+          </button>
           <WidthToggle isWide={isWide} onToggle={() => setIsWide((v) => !v)} />
           <ThemeToggle />
         </div>
@@ -410,6 +428,8 @@ export function App() {
                 <OutlineGraphView onClose={() => setShowGraph(false)} />
               ) : graphViewMode === "gravity" ? (
                 <OutlineGravityView onClose={() => setShowGraph(false)} />
+              ) : graphViewMode === "tree" ? (
+                <OutlineTreeView onClose={() => setShowGraph(false)} />
               ) : (
                 <GraphView onClose={() => setShowGraph(false)} />
               )
