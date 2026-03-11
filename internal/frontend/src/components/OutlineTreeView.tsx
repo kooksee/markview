@@ -159,16 +159,43 @@ function findRootFiles(outline: Outline): OutlineFile[] {
   return outline.files.filter((f) => !linkedTo.has(f.id));
 }
 
-/** 默认折叠：H2 和链接节点，只展开文件与一级标题。 */
+/** 默认折叠：H2（二级标题）和链接节点；展开根、文件、H1。 */
 function collectDefaultCollapsedIds(outline: Outline): Set<string> {
   const ids = new Set<string>();
-  function walk(node: TreeDataNode) {
-    if (node.data?.isH2 && node.data?.hasLinks && node.children?.length) ids.add(node.id);
-    if (node.data?.isLink && node.data?.hasChildren && node.children?.length) ids.add(node.id);
-    node.children?.forEach(walk);
+  const fileIds = new Set(outline.files.map((f) => f.id));
+  const safe = (s: string) => s.replace(/-/g, "_");
+
+  function collectFromFile(file: OutlineFile, pathPrefix: string, visited: Set<string>) {
+    if (visited.has(file.id)) return;
+    visited.add(file.id);
+    const prefix = pathPrefix ? `${pathPrefix}_` : "";
+    for (let i = 0; i < file.headings.length; i++) {
+      const h = file.headings[i];
+      if (h.level !== 1) continue;
+      for (let j = i + 1; j < file.headings.length; j++) {
+        const h2 = file.headings[j];
+        if (h2.level === 1) break;
+        if (h2.level === 2) {
+          ids.add(`${prefix}n_${safe(file.id)}_${j}`);
+          const linked = (h2.linkedFileIds ?? []).filter((id) => fileIds.has(id));
+          for (const tid of linked) {
+            const targetFile = outline.files.find((f) => f.id === tid);
+            if (targetFile?.headings.length) {
+              ids.add(`${prefix}link_${safe(file.id)}_${j}_${safe(tid)}`);
+              collectFromFile(targetFile, `${prefix}link_${safe(file.id)}_${j}_${safe(tid)}`, visited);
+            }
+          }
+        }
+      }
+    }
+    visited.delete(file.id);
   }
-  const root = outlineToTreeData(outline, new Set());
-  root.children?.forEach(walk);
+
+  const rootFiles = findRootFiles(outline);
+  const files = rootFiles.length > 0 ? rootFiles : outline.files;
+  for (const file of files) {
+    collectFromFile(file, "", new Set());
+  }
   return ids;
 }
 
@@ -194,8 +221,17 @@ function outlineToTreeData(outline: Outline, collapsedIds: Set<string>): TreeDat
 
       const fileId = `fl_${file.id.replace(/-/g, "_")}`;
       const fileCollapsed = collapsedIds.has(fileId);
-      const firstH1 = file.headings.find((h) => h.level === 1)?.text;
-      const fileLabel = firstH1 || file.name;
+      const h1List = file.headings.filter((h) => h.level === 1);
+      const firstH1 = h1List[0]?.text;
+      const singleH1 = h1Nodes.length === 1 ? h1Nodes[0] : null;
+      const mergeFileAndH1 = singleH1 !== null;
+      const fileLabel = mergeFileAndH1 ? (firstH1 ?? file.name) : (h1List.length > 1 && firstH1 ? firstH1 : file.name);
+      const fileChildren =
+        mergeFileAndH1 && !fileCollapsed
+          ? singleH1?.children
+          : h1Nodes.length > 0 && !fileCollapsed
+            ? h1Nodes
+            : undefined;
       return {
         id: fileId,
         data: {
@@ -203,18 +239,20 @@ function outlineToTreeData(outline: Outline, collapsedIds: Set<string>): TreeDat
           fileId: file.id,
           group: file.group,
           isFile: true,
-          hasChildren: h1Nodes.length > 0,
+          isH1: mergeFileAndH1,
+          hasChildren: (mergeFileAndH1 ? (singleH1?.children?.length ?? 0) : h1Nodes.length) > 0,
           fileColorIndex,
         },
-        children: h1Nodes.length > 0 && !fileCollapsed ? h1Nodes : undefined,
+        children: fileChildren,
       };
     },
   );
 
+  const rootCollapsed = collapsedIds.has("root");
   const root: TreeDataNode = {
     id: "root",
     data: { value: "文档" },
-    children: fileNodes,
+    children: rootCollapsed ? undefined : fileNodes,
   };
 
   function assignDepth(node: TreeDataNode, depth: number) {
@@ -322,6 +360,7 @@ export function OutlineTreeView({ onClose }: OutlineTreeViewProps) {
           : { id: node.id, data: node.data, depth };
         return { ...base, value };
       },
+      getChildren: (datum) => (datum as TreeDataNode).children ?? [],
     });
 
     const isDark = document.documentElement.getAttribute("data-theme") === "dark";
@@ -359,34 +398,34 @@ export function OutlineTreeView({ onClose }: OutlineTreeViewProps) {
 
           const data = d.data as TreeDataNode["data"];
           const collapsed = collapsedIds.has(nodeId);
+          const hasChildren = (d as { children?: unknown[] }).children?.length;
           const canCollapse =
             collapsed ||
+            (nodeId === rootId && hasChildren) ||
             (data?.isFile && data?.hasChildren) ||
             (data?.isH1 && data?.hasChildren) ||
             (data?.isH2 && data?.hasLinks) ||
             (data?.isLink && data?.hasChildren);
           const displayText = (d.value ?? d.data?.value ?? "") as string;
-          const isHiddenRoot = nodeId === rootId;
-          const labelText = isHiddenRoot
-            ? ""
+          const isRootNode = nodeId === rootId;
+          const labelText = isRootNode
+            ? displayText
             : canCollapse
               ? `${collapsed ? "▶ " : "▼ "}${displayText}`
               : displayText;
           const baseSize = getNodeSize(d, isRoot);
-          const size: [number, number] = isHiddenRoot
-            ? [0, 0]
-            : canCollapse
-              ? [baseSize[0] + 20, baseSize[1]]
-              : baseSize;
+          const size: [number, number] = canCollapse
+            ? [baseSize[0] + 20, baseSize[1]]
+            : baseSize;
           return {
             size,
-            fill: isHiddenRoot ? "transparent" : isRoot ? rootFill : fillColor,
-            stroke: isHiddenRoot ? "transparent" : isRoot ? (canCollapse ? color : "transparent") : color,
-            lineWidth: isHiddenRoot ? 0 : canCollapse ? 2 : 1,
+            fill: isRoot ? rootFill : fillColor,
+            stroke: isRoot ? (canCollapse ? color : "transparent") : color,
+            lineWidth: canCollapse ? 2 : 1,
             lineDash: collapsed ? [4, 4] : undefined,
             radius: 6,
             labelText,
-            labelFill: isHiddenRoot ? "transparent" : isRoot ? (isDark ? "#e6edf3" : "#262626") : textColor,
+            labelFill: isRoot ? (isDark ? "#e6edf3" : "#262626") : textColor,
             labelFontSize: isRoot ? 18 : 14,
             labelFontWeight: isRoot ? 600 : 400,
             labelPlacement: "center",
@@ -395,7 +434,7 @@ export function OutlineTreeView({ onClose }: OutlineTreeViewProps) {
             labelBackground: true,
             labelBackgroundFill: canCollapse ? (isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.03)") : "transparent",
             labelPadding: direction === "left" ? [2, 0, 10, 40] : [2, 40, 10, 0],
-            visibility: isHiddenRoot ? "hidden" : "visible",
+            visibility: "visible" as const,
             cursor: canCollapse ? "pointer" : undefined,
             ports: isRoot
               ? [{ placement: "right" }, { placement: "left" }]
@@ -406,7 +445,6 @@ export function OutlineTreeView({ onClose }: OutlineTreeViewProps) {
       edge: {
         type: "cubic-horizontal",
         style: (d: { source: string; target: string }) => {
-          if (d.source === rootId) return { visibility: "hidden" as const };
           const targetData = g?.getNodeData(d.target);
           const colorIdx = (targetData?.data?.fileColorIndex as number) ?? 0;
           const color = COLORS[colorIdx % COLORS.length] ?? "#99ADD1";

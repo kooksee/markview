@@ -141,15 +141,15 @@ func (s *State) BuildGraph() Graph {
 	edgeMap := make(map[string]*GraphEdge)
 	for _, g := range s.groups {
 		for _, entry := range g.Files {
-			content, baseDir := s.fileContentLocked(entry)
+			content, _ := s.fileContentLocked(entry)
 			if content == "" {
 				continue
 			}
+			baseDir := s.getBaseDirForEntry(entry, g.Name)
 			for _, lh := range extractLinksWithHeadings(content) {
-				absPath := filepath.Join(baseDir, lh.hrefPath)
-				absPath = filepath.Clean(absPath)
-				targetID := FileID(absPath)
-				if targetEntry := s.findFileByIDLocked(targetID); targetEntry != nil {
+				targetEntry := s.findFileByHrefLocked(baseDir, lh.hrefPath)
+				if targetEntry != nil {
+					targetID := targetEntry.ID
 					key := entry.ID + "->" + targetID
 					if _, ok := edgeMap[key]; !ok {
 						edgeMap[key] = &GraphEdge{
@@ -196,6 +196,34 @@ func (s *State) findFileByIDLocked(id string) *FileEntry {
 		}
 	}
 	return nil
+}
+
+// findFileByHrefLocked resolves hrefPath to a file. When baseDir is non-empty, uses
+// filepath.Join(baseDir, hrefPath) and looks up by FileID. When baseDir is empty
+// (e.g. uploaded file), falls back to matching by path suffix.
+func (s *State) findFileByHrefLocked(baseDir, hrefPath string) *FileEntry {
+	if baseDir != "" {
+		absPath := filepath.Clean(filepath.Join(baseDir, hrefPath))
+		return s.findFileByIDLocked(FileID(absPath))
+	}
+	// Fallback: match by path suffix (e.g. "other.md" or "docs/other.md")
+	hrefNorm := filepath.ToSlash(filepath.Clean(hrefPath))
+	var match *FileEntry
+	for _, g := range s.groups {
+		for _, f := range g.Files {
+			if f.Uploaded || f.Path == "" {
+				continue
+			}
+			pathNorm := filepath.ToSlash(f.Path)
+			if pathNorm == hrefNorm || strings.HasSuffix(pathNorm, "/"+hrefNorm) {
+				if match != nil {
+					return nil // ambiguous
+				}
+				match = f
+			}
+		}
+	}
+	return match
 }
 
 func handleGraph(state *State) http.HandlerFunc {
@@ -268,11 +296,8 @@ func (s *State) extractHeadingsWithLinks(content string, baseDir string) []Outli
 		linkedIDs := make(map[string]struct{})
 		for _, pair := range ExtractMarkdownLinks(section) {
 			_, hrefPath := pair[0], pair[1]
-			absPath := filepath.Join(baseDir, hrefPath)
-			absPath = filepath.Clean(absPath)
-			targetID := FileID(absPath)
-			if s.findFileByIDLocked(targetID) != nil {
-				linkedIDs[targetID] = struct{}{}
+			if target := s.findFileByHrefLocked(baseDir, hrefPath); target != nil {
+				linkedIDs[target.ID] = struct{}{}
 			}
 		}
 		ids := make([]string, 0, len(linkedIDs))
@@ -289,6 +314,23 @@ func (s *State) extractHeadingsWithLinks(content string, baseDir string) []Outli
 	return out
 }
 
+// getBaseDirForEntry returns the base directory for resolving relative links.
+// For non-uploaded files, uses the file's directory. For uploaded files (baseDir empty),
+// uses the directory of the first non-uploaded file in the same group as fallback.
+func (s *State) getBaseDirForEntry(entry *FileEntry, groupName string) string {
+	_, baseDir := s.fileContentLocked(entry)
+	if baseDir != "" {
+		return baseDir
+	}
+	// Uploaded file: use fallback from group's first file with a path
+	for _, f := range s.groups[groupName].Files {
+		if !f.Uploaded && f.Path != "" {
+			return filepath.Dir(f.Path)
+		}
+	}
+	return ""
+}
+
 // BuildOutline returns all files with their H1/H2 headings.
 func (s *State) BuildOutline() Outline {
 	s.mu.RLock()
@@ -297,7 +339,8 @@ func (s *State) BuildOutline() Outline {
 	var files []OutlineNode
 	for _, g := range s.groups {
 		for _, entry := range g.Files {
-			content, baseDir := s.fileContentLocked(entry)
+			content, _ := s.fileContentLocked(entry)
+			baseDir := s.getBaseDirForEntry(entry, g.Name)
 			headings := s.extractHeadingsWithLinks(content, baseDir)
 			files = append(files, OutlineNode{
 				ID:       entry.ID,
