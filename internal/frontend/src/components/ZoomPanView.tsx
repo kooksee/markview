@@ -7,11 +7,22 @@ const DEFAULT_ZOOM = 2;
 interface ZoomPanViewProps {
   children: React.ReactNode;
   className?: string;
+  defaultZoom?: number;
+  onZoomChange?: (zoom: number) => void;
 }
 
-export function ZoomPanView({ children, className = "" }: ZoomPanViewProps) {
-  const [zoom, setZoom] = useState(DEFAULT_ZOOM);
+export function ZoomPanView({
+  children,
+  className = "",
+  defaultZoom = DEFAULT_ZOOM,
+  onZoomChange,
+}: ZoomPanViewProps) {
+  const [zoom, setZoom] = useState(defaultZoom);
   const [pan, setPan] = useState({ x: 0, y: 0 });
+
+  useEffect(() => {
+    onZoomChange?.(zoom);
+  }, []);
   const panStart = useRef<{ x: number; y: number; panX: number; panY: number } | null>(null);
   const justPanned = useRef(false);
   const wrapperRef = useRef<HTMLDivElement>(null);
@@ -24,11 +35,15 @@ export function ZoomPanView({ children, className = "" }: ZoomPanViewProps) {
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
       const delta = e.deltaY > 0 ? -0.1 : 0.1;
-      setZoomRef.current((z) => Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, z + delta)));
+      setZoomRef.current((z) => {
+        const next = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, z + delta));
+        onZoomChange?.(next);
+        return next;
+      });
     };
     el.addEventListener("wheel", onWheel, { passive: false });
     return () => el.removeEventListener("wheel", onWheel);
-  }, []);
+  }, [onZoomChange]);
 
   const handleMouseDown = useCallback(
     (e: React.MouseEvent) => {
@@ -64,9 +79,11 @@ export function ZoomPanView({ children, className = "" }: ZoomPanViewProps) {
   }, []);
 
   const handleReset = useCallback(() => {
-    setZoom(DEFAULT_ZOOM);
+    const targetZoom = defaultZoom;
+    setZoom(targetZoom);
     setPan({ x: 0, y: 0 });
-  }, []);
+    onZoomChange?.(targetZoom);
+  }, [defaultZoom, onZoomChange]);
 
   return (
     <div className={`relative overflow-hidden ${className}`}>

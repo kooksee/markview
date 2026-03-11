@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OutlineGraphView 布局对比</title>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <style>
+    body { font-family: system-ui, sans-serif; padding: 24px; background: #f6f8fa; }
+    h1 { font-size: 1.25rem; margin-bottom: 8px; }
+    .comparison { display: flex; gap: 32px; flex-wrap: wrap; }
+    .panel { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,.1); }
+    .panel h2 { font-size: 0.875rem; color: #636c76; margin: 0 0 12px; font-weight: 500; }
+    .mermaid { display: flex; justify-content: center; }
+    .mermaid svg { max-width: 100%; }
+  </style>
+</head>
+<body>
+  <h1>OutlineGraphView 布局对比</h1>
+  <p style="color:#636c76; font-size:14px; margin-bottom:24px;">方案 A：链式（h2 纵向）｜ 方案 B：subgraph 按文件分组｜ 含文件引用关系</p>
+
+  <div class="comparison">
+    <div class="panel">
+      <h2>当前：并联布局（h1 → h2a, h2b, h2c）</h2>
+      <div class="mermaid">
+flowchart TB
+  fl1["▼ 文件A.md"]
+  n0["一级标题"]
+  n1["二级标题 A"]
+  n2["二级标题 B"]
+  n3["二级标题 C"]
+  fl1 --> n0
+  n0 --> n1
+  n0 --> n2
+  n0 --> n3
+      </div>
+    </div>
+    <div class="panel">
+      <h2>方案 A：链式布局（h1 → h2a → h2b → h2c）</h2>
+      <div class="mermaid">
+flowchart TB
+  fl1["▼ 文件A.md"]
+  n0["一级标题"]
+  n1["二级标题 A"]
+  n2["二级标题 B"]
+  n3["二级标题 C"]
+  fl1 --> n0
+  n0 --> n1
+  n1 --> n2
+  n2 --> n3
+      </div>
+    </div>
+  </div>
+
+  <div style="margin-top: 32px;">
+    <h2 style="font-size:0.875rem; color:#636c76; margin-bottom:12px;">方案 B：subgraph 按文件分组</h2>
+    <p style="font-size:13px; color:#636c76; margin-bottom:12px;">用 subgraph 将每个文件的标题包成子图，h2 仍为并联</p>
+    <div class="comparison">
+      <div class="panel">
+        <h2>方案 B：单文件 subgraph</h2>
+        <div class="mermaid">
+flowchart TB
+  subgraph sg1 ["▼ 文件A.md"]
+    n0["一级标题"]
+    n1["二级标题 A"]
+    n2["二级标题 B"]
+    n3["二级标题 C"]
+  end
+  n0 --> n1
+  n0 --> n2
+  n0 --> n3
+        </div>
+      </div>
+      <div class="panel">
+        <h2>方案 B：多文件 subgraph</h2>
+        <div class="mermaid">
+flowchart TB
+  subgraph sg1 ["▼ 设计.md"]
+    n1_0["需求分析"]
+    n1_1["架构设计"]
+    n1_2["接口定义"]
+  end
+  subgraph sg2 ["▼ 开发.md"]
+    n2_0["前端实现"]
+    n2_1["后端实现"]
+  end
+  n1_0 --> n1_1
+  n1_0 --> n1_2
+  n2_0 --> n2_1
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div style="margin-top: 32px;">
+    <h2 style="font-size:0.875rem; color:#636c76; margin-bottom:12px;">方案 B + 文件引用</h2>
+    <p style="font-size:13px; color:#636c76; margin-bottom:12px;">跨 subgraph 的链接：标题节点 → 目标文件的节点</p>
+    <div class="panel">
+      <div class="mermaid">
+flowchart TB
+  subgraph sg1 ["▼ 设计.md"]
+    n1_0["需求分析"]
+    n1_1["架构设计"]
+    n1_2["接口定义"]
+  end
+  subgraph sg2 ["▼ 开发.md"]
+    n2_0["前端实现"]
+  end
+  n1_0 --> n1_1
+  n1_0 --> n1_2
+  n1_1 --> n2_0
+        </div>
+      <p style="font-size:12px; color:#8b949e; margin-top:8px;">「架构设计」链接了 开发.md，连到其首个标题</p>
+    </div>
+  </div>
+
+  <div style="margin-top: 32px;">
+    <h2 style="font-size:0.875rem; color:#636c76; margin-bottom:12px;">方案 B + 一个标题引用多个文件</h2>
+    <div class="panel">
+      <div class="mermaid">
+flowchart TB
+  subgraph sg1 ["▼ 设计.md"]
+    n1_0["需求分析"]
+    n1_1["架构设计"]
+    n1_2["接口定义"]
+  end
+  subgraph sg2 ["▼ 开发.md"]
+    n2_0["前端"]
+  end
+  subgraph sg3 ["▼ 测试.md"]
+    n3_0["用例"]
+  end
+  n1_0 --> n1_1
+  n1_0 --> n1_2
+  n1_1 --> n2_0
+  n1_1 --> n3_0
+        </div>
+      <p style="font-size:12px; color:#8b949e; margin-top:8px;">「架构设计」同时链接 开发.md 和 测试.md</p>
+    </div>
+  </div>
+
+  <div style="margin-top: 32px;">
+    <h2 style="font-size:0.875rem; color:#636c76; margin-bottom:12px;">多文件示意（方案 A 链式）</h2>
+    <div class="panel">
+      <div class="mermaid">
+flowchart TB
+  fl1["▼ 设计.md"]
+  n1_0["需求分析"]
+  n1_1["架构设计"]
+  n1_2["接口定义"]
+  fl2["▼ 开发.md"]
+  n2_0["前端实现"]
+  n2_1["后端实现"]
+  n2_2["部署流程"]
+  fl1 --> n1_0
+  n1_0 --> n1_1
+  n1_1 --> n1_2
+  fl2 --> n2_0
+  n2_0 --> n2_1
+  n2_1 --> n2_2
+      </div>
+    </div>
+  </div>
+
+  <div style="margin-top: 32px;">
+    <h2 style="font-size:0.875rem; color:#636c76; margin-bottom:12px;">文件引用关系（标题 → 被引用文件）</h2>
+    <p style="font-size:13px; color:#636c76; margin-bottom:12px;">当标题内含有指向其他文件的链接时，会从该标题节点连到目标文件的文件名节点</p>
+    <div class="comparison">
+      <div class="panel">
+        <h2>并联布局 + 引用</h2>
+        <div class="mermaid">
+flowchart TB
+  fl1["▼ 设计.md"]
+  n1_0["需求分析"]
+  n1_1["架构设计"]
+  n1_2["接口定义"]
+  fl2["▼ 开发.md"]
+  n2_0["前端实现"]
+  fl1 --> n1_0
+  n1_0 --> n1_1
+  n1_0 --> n1_2
+  n1_1 --> fl2
+  fl2 --> n2_0
+        </div>
+        <p style="font-size:12px; color:#8b949e; margin-top:8px;">「架构设计」链接了 开发.md</p>
+      </div>
+      <div class="panel">
+        <h2>链式布局 + 引用</h2>
+        <div class="mermaid">
+flowchart TB
+  fl1["▼ 设计.md"]
+  n1_0["需求分析"]
+  n1_1["架构设计"]
+  n1_2["接口定义"]
+  fl2["▼ 开发.md"]
+  n2_0["前端实现"]
+  fl1 --> n1_0
+  n1_0 --> n1_1
+  n1_1 --> n1_2
+  n1_1 --> fl2
+  fl2 --> n2_0
+        </div>
+        <p style="font-size:12px; color:#8b949e; margin-top:8px;">「架构设计」链接了 开发.md</p>
+      </div>
+    </div>
+  </div>
+
+  <div style="margin-top: 32px;">
+    <h2 style="font-size:0.875rem; color:#636c76; margin-bottom:12px;">一个标题引用多个文件（方案 A）</h2>
+    <p style="font-size:13px; color:#636c76; margin-bottom:12px;">「架构设计」同时链接了 开发.md 和 测试.md，被引用的多个文件会从同一标题节点分出，仍可能横向并排</p>
+    <div class="panel">
+      <div class="mermaid">
+flowchart TB
+  fl1["▼ 设计.md"]
+  n1_0["需求分析"]
+  n1_1["架构设计"]
+  n1_2["接口定义"]
+  fl2["▼ 开发.md"]
+  n2_0["前端"]
+  fl3["▼ 测试.md"]
+  n3_0["用例"]
+  fl1 --> n1_0
+  n1_0 --> n1_1
+  n1_1 --> n1_2
+  n1_1 --> fl2
+  n1_1 --> fl3
+  fl2 --> n2_0
+  fl3 --> n3_0
+      </div>
+    </div>
+  </div>
+
+  <div style="margin-top: 32px;">
+    <h2 style="font-size:0.875rem; color:#636c76; margin-bottom:12px;">多文件互相引用</h2>
+    <div class="panel">
+      <div class="mermaid">
+flowchart TB
+  fl1["▼ 设计.md"]
+  n1_0["需求"]
+  n1_1["架构"]
+  fl2["▼ 开发.md"]
+  n2_0["实现"]
+  fl3["▼ 测试.md"]
+  n3_0["用例"]
+  fl1 --> n1_0
+  n1_0 --> n1_1
+  n1_1 --> fl2
+  fl2 --> n2_0
+  n2_0 --> fl3
+  fl3 --> n3_0
+  n3_0 --> fl1
+      </div>
+      <p style="font-size:12px; color:#8b949e; margin-top:8px;">设计→开发→测试→设计，形成引用闭环</p>
+    </div>
+  </div>
+
+  <div style="margin-top: 48px; padding-top: 24px; border-top: 1px solid #d0d7de;">
+    <h2 style="font-size:1rem; color:#1f2328; margin-bottom:8px;">方案 C：圆形容器（你的想法）</h2>
+    <p style="font-size:13px; color:#636c76; margin-bottom:16px;">每个文件 = 一个圆，一级标题在圆心，二级标题围绕圆心；文件间关系 = 圆与圆的连线（通过 h2 关联）</p>
+
+    <h3 style="font-size:0.875rem; color:#636c76; margin:20px 0 12px;">概念示意（手绘风格）</h3>
+    <div class="panel">
+      <svg viewBox="0 0 520 280" style="max-width:100%;">
+        <defs>
+          <marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="#636c76"/></marker>
+        </defs>
+        <!-- 设计.md 圆 -->
+        <circle cx="140" cy="140" r="70" fill="none" stroke="#0969da" stroke-width="2" stroke-dasharray="4"/>
+        <text x="140" y="130" text-anchor="middle" font-size="11" fill="#636c76">设计.md</text>
+        <circle cx="140" cy="140" r="12" fill="#0969da" stroke="#fff" stroke-width="2"/>
+        <text x="140" y="144" text-anchor="middle" font-size="9" fill="#fff">需求</text>
+        <circle cx="100" cy="100" r="18" fill="#ddf4ff" stroke="#0969da"/>
+        <text x="100" y="104" text-anchor="middle" font-size="8">架构</text>
+        <circle cx="180" cy="100" r="18" fill="#ddf4ff" stroke="#0969da"/>
+        <text x="180" y="104" text-anchor="middle" font-size="8">接口</text>
+        <circle cx="100" cy="180" r="18" fill="#ddf4ff" stroke="#0969da"/>
+        <text x="100" y="184" text-anchor="middle" font-size="8">评审</text>
+        <!-- 开发.md 圆 -->
+        <circle cx="380" cy="140" r="70" fill="none" stroke="#1a7f37" stroke-width="2" stroke-dasharray="4"/>
+        <text x="380" y="130" text-anchor="middle" font-size="11" fill="#636c76">开发.md</text>
+        <circle cx="380" cy="140" r="12" fill="#1a7f37" stroke="#fff" stroke-width="2"/>
+        <text x="380" y="144" text-anchor="middle" font-size="9" fill="#fff">实现</text>
+        <circle cx="340" cy="100" r="18" fill="#dafbe1" stroke="#1a7f37"/>
+        <text x="340" y="104" text-anchor="middle" font-size="8">前端</text>
+        <circle cx="420" cy="100" r="18" fill="#dafbe1" stroke="#1a7f37"/>
+        <text x="420" y="104" text-anchor="middle" font-size="8">后端</text>
+        <!-- 架构 -> 开发 的引用 -->
+        <path d="M118 100 Q260 60 362 100" fill="none" stroke="#cf222e" stroke-width="1.5" stroke-dasharray="3" marker-end="url(#arrow)"/>
+        <text x="240" y="70" font-size="10" fill="#cf222e">链接</text>
+      </svg>
+      <p style="font-size:12px; color:#8b949e; margin-top:8px;">圆心=一级标题，周围=二级标题；「架构」链接了 开发.md</p>
+    </div>
+
+    <h3 style="font-size:0.875rem; color:#636c76; margin:20px 0 12px;">Mermaid 近似（subgraph 模拟圆组，h1 为枢纽）</h3>
+    <p style="font-size:13px; color:#636c76; margin-bottom:12px;">Mermaid 无原生径向布局，用 subgraph 包住「h1 + h2」，文件间通过 h2→h1 连线</p>
+    <div class="panel">
+      <div class="mermaid">
+flowchart TB
+  subgraph sg1 ["设计.md"]
+    h1_1(("需求"))
+    h2_1a["架构"]
+    h2_1b["接口"]
+    h2_1c["评审"]
+    h1_1 --- h2_1a
+    h1_1 --- h2_1b
+    h1_1 --- h2_1c
+  end
+  subgraph sg2 ["开发.md"]
+    h1_2(("实现"))
+    h2_2a["前端"]
+    h2_2b["后端"]
+    h1_2 --- h2_2a
+    h1_2 --- h2_2b
+  end
+  h2_1a -.-> h1_2
+      </div>
+      <p style="font-size:12px; color:#8b949e; margin-top:8px;">虚线：架构 → 开发.md 的引用</p>
+    </div>
+
+    <h3 style="font-size:0.875rem; color:#636c76; margin:20px 0 12px;">多文件 + 多引用</h3>
+    <div class="panel">
+      <div class="mermaid">
+flowchart TB
+  subgraph sg1 ["设计.md"]
+    h1_1(("需求"))
+    h2_1a["架构"]
+    h2_1b["接口"]
+    h1_1 --- h2_1a
+    h1_1 --- h2_1b
+  end
+  subgraph sg2 ["开发.md"]
+    h1_2(("实现"))
+    h2_2a["前端"]
+    h1_2 --- h2_2a
+  end
+  subgraph sg3 ["测试.md"]
+    h1_3(("用例"))
+    h2_3a["单元"]
+    h1_3 --- h2_3a
+  end
+  h2_1a -.-> h1_2
+  h2_1a -.-> h1_3
+      </div>
+      <p style="font-size:12px; color:#8b949e; margin-top:8px;">「架构」同时链接 开发.md 和 测试.md</p>
+    </div>
+
+    <div style="margin-top:16px; padding:12px; background:#fff8c5; border-radius:6px; font-size:13px; color:#636c76;">
+      <strong>实现建议：</strong>Mermaid 的 flowchart 不支持真正的径向布局。若要实现「圆 + 圆心 + 周围节点」，需用 D3.js、Cytoscape.js 等自绘，或等 Mermaid 的 radial 布局合并。当前用 subgraph + 圆形节点 (()) 可做近似，但布局仍是 dagre 的 TB/LR。
+    </div>
+  </div>
+
+  <script>
+    mermaid.initialize({ startOnLoad: true, theme: 'default' });
+  </script>
+</body>
+</html>

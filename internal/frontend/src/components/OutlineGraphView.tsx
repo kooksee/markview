@@ -42,12 +42,22 @@ function buildOutlineMermaid(outline: Outline, collapsedFiles: Set<string>): str
       if (file.headings.length > 0) {
         lines.push(`  ${flId} --> ${safeId(file.id, 0)}`);
       }
+      // 方案 A：h2 链式连接（h1 → h2a → h2b → h2c），减少横向宽度
       for (let i = 0; i < file.headings.length; i++) {
         if (file.headings[i].level !== 1) continue;
         const fromId = safeId(file.id, i);
+        const siblings: number[] = [];
         for (let j = i + 1; j < file.headings.length; j++) {
           if (file.headings[j].level === 1) break;
-          lines.push(`  ${fromId} --> ${safeId(file.id, j)}`);
+          siblings.push(j);
+        }
+        if (siblings.length > 0) {
+          lines.push(`  ${fromId} --> ${safeId(file.id, siblings[0])}`);
+          for (let k = 0; k < siblings.length - 1; k++) {
+            lines.push(
+              `  ${safeId(file.id, siblings[k])} --> ${safeId(file.id, siblings[k + 1])}`,
+            );
+          }
         }
       }
       // 每个标题下的关联文件：从对应标题指向被引用文件的文件名节点
