@@ -343,6 +343,7 @@ function HighlightedView({ content, language }: { content: string; language: str
 
   useEffect(() => {
     let cancelled = false;
+    setHtml("");
     codeToHtml(content, { lang: language, theme: "github-dark" })
       .then((result) => {
         if (!cancelled) setHtml(result);
