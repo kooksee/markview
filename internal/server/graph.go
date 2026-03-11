@@ -21,9 +21,10 @@ type GraphNode struct {
 
 // GraphEdge represents a link from one file to another.
 type GraphEdge struct {
-	From  string `json:"from"`
-	To    string `json:"to"`
-	Label string `json:"label,omitempty"`
+	From    string `json:"from"`
+	To      string `json:"to"`
+	Label   string `json:"label,omitempty"`
+	Heading string `json:"heading,omitempty"` // H1/H2 text of the section where the link appears
 }
 
 // Graph is the full link graph for visualization.
@@ -35,6 +36,60 @@ type Graph struct {
 // markdownLinkRegex matches [text](url) with optional fragment in url.
 // Captures: group 1 = link text, group 2 = url (path + optional #fragment).
 var markdownLinkRegex = regexp.MustCompile(`\[([^\]]*)\]\(([^)]+)\)`)
+
+// linkWithHeading holds a markdown link plus the heading of its section.
+type linkWithHeading struct {
+	heading  string
+	linkText string
+	hrefPath string
+}
+
+// extractLinksWithHeadings parses content and returns links with their section heading.
+// Links before the first H1/H2 have empty heading.
+func extractLinksWithHeadings(content string) []linkWithHeading {
+	if strings.HasPrefix(content, "---") {
+		if i := strings.Index(content[3:], "\n---"); i >= 0 {
+			content = content[3+i+4:]
+		}
+	}
+	matches := headingRegex.FindAllStringSubmatchIndex(content, -1)
+	var out []linkWithHeading
+	if len(matches) == 0 {
+		for _, pair := range ExtractMarkdownLinks(content) {
+			out = append(out, linkWithHeading{linkText: pair[0], hrefPath: pair[1]})
+		}
+		return out
+	}
+	// Process content before first heading
+	firstSectionEnd := matches[0][0]
+	for _, pair := range ExtractMarkdownLinks(content[:firstSectionEnd]) {
+		out = append(out, linkWithHeading{linkText: pair[0], hrefPath: pair[1]})
+	}
+	for i, m := range matches {
+		if len(m) < 6 {
+			continue
+		}
+		hashes := content[m[2]:m[3]]
+		headingText := strings.TrimSpace(content[m[4]:m[5]])
+		if headingText == "" || len(hashes) > 2 || strings.HasPrefix(headingText, "#") {
+			continue
+		}
+		sectionStart := m[1]
+		sectionEnd := len(content)
+		if i+1 < len(matches) {
+			sectionEnd = matches[i+1][0]
+		}
+		section := content[sectionStart:sectionEnd]
+		for _, pair := range ExtractMarkdownLinks(section) {
+			out = append(out, linkWithHeading{
+				heading:  headingText,
+				linkText: pair[0],
+				hrefPath: pair[1],
+			})
+		}
+	}
+	return out
+}
 
 // ExtractMarkdownLinks parses content and returns (linkText, hrefPath) pairs.
 // hrefPath is the path part of the URL (without fragment). Only .md/.mdx are returned.
@@ -88,16 +143,16 @@ func (s *State) BuildGraph() Graph {
 			if content == "" {
 				continue
 			}
-			for _, pair := range ExtractMarkdownLinks(content) {
-				label, hrefPath := pair[0], pair[1]
-				absPath := filepath.Join(baseDir, hrefPath)
+			for _, lh := range extractLinksWithHeadings(content) {
+				absPath := filepath.Join(baseDir, lh.hrefPath)
 				absPath = filepath.Clean(absPath)
 				targetID := FileID(absPath)
 				if targetEntry := s.findFileByIDLocked(targetID); targetEntry != nil {
 					edges = append(edges, GraphEdge{
-						From:  entry.ID,
-						To:    targetID,
-						Label: strings.TrimSpace(label),
+						From:    entry.ID,
+						To:      targetID,
+						Label:   strings.TrimSpace(lh.linkText),
+						Heading: strings.TrimSpace(lh.heading),
 					})
 				}
 			}

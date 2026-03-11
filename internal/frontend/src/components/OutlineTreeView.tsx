@@ -31,6 +31,7 @@ interface TreeDataNode {
     isH2?: boolean;
     isLink?: boolean;
     hasLinks?: boolean;
+    hasChildren?: boolean;
     fileColorIndex?: number;
   };
   children?: TreeDataNode[];
@@ -49,6 +50,7 @@ function buildFileOutline(
   visited: Set<string>,
   depth: number,
   pathPrefix: string,
+  collapsedIds: Set<string>,
 ): TreeDataNode[] {
   if (depth >= MAX_LINK_DEPTH || visited.has(file.id)) return [];
   visited.add(file.id);
@@ -76,7 +78,7 @@ function buildFileOutline(
               ? outline.files.indexOf(targetFile) % COLORS.length
               : 0;
             const targetOutline =
-              targetFile?.headings.length
+              targetFile?.headings.length && !collapsedIds.has(linkId)
                 ? buildFileOutline(
                     targetFile,
                     outline,
@@ -86,6 +88,7 @@ function buildFileOutline(
                     new Set(visited),
                     depth + 1,
                     linkId,
+                    collapsedIds,
                   )
                 : [];
 
@@ -96,6 +99,7 @@ function buildFileOutline(
                 targetFileId: tid,
                 targetGroup: target?.group ?? "default",
                 isLink: true,
+                hasChildren: targetOutline.length > 0,
                 fileColorIndex: targetColorIdx,
               },
               children: targetOutline.length > 0 ? targetOutline : undefined,
@@ -103,6 +107,7 @@ function buildFileOutline(
           }
 
           const hasLinks = linkChildren.length > 0;
+          const h2Collapsed = collapsedIds.has(h2Id);
           h2Nodes.push({
             id: h2Id,
             data: {
@@ -111,14 +116,16 @@ function buildFileOutline(
               group: file.group,
               isH2: true,
               hasLinks,
+              hasChildren: hasLinks,
               fileColorIndex,
             },
-            children: hasLinks ? linkChildren : undefined,
+            children: hasLinks && !h2Collapsed ? linkChildren : undefined,
           });
         }
       }
 
       const h1Id = `${idPrefix}h1_${file.id}_${i}`.replace(/-/g, "_");
+      const h1Collapsed = collapsedIds.has(h1Id);
       h1Nodes.push({
         id: h1Id,
         data: {
@@ -126,9 +133,10 @@ function buildFileOutline(
           fileId: file.id,
           group: file.group,
           isH1: true,
+          hasChildren: h2Nodes.length > 0,
           fileColorIndex,
         },
-        children: h2Nodes.length > 0 ? h2Nodes : undefined,
+        children: h2Nodes.length > 0 && !h1Collapsed ? h2Nodes : undefined,
       });
     }
   }
@@ -150,7 +158,18 @@ function findRootFiles(outline: Outline): OutlineFile[] {
   return outline.files.filter((f) => !linkedTo.has(f.id));
 }
 
-function outlineToTreeData(outline: Outline): TreeDataNode {
+function collectDefaultCollapsedIds(outline: Outline): Set<string> {
+  const ids = new Set<string>();
+  function walk(node: TreeDataNode) {
+    if (node.data?.isH2 && node.data?.hasLinks && node.children?.length) ids.add(node.id);
+    node.children?.forEach(walk);
+  }
+  const root = outlineToTreeData(outline, new Set());
+  root.children?.forEach(walk);
+  return ids;
+}
+
+function outlineToTreeData(outline: Outline, collapsedIds: Set<string>): TreeDataNode {
   const fileIds = new Set(outline.files.map((f) => f.id));
   const fileById = new Map(outline.files.map((f) => [f.id, f]));
   const rootFiles = findRootFiles(outline);
@@ -167,19 +186,24 @@ function outlineToTreeData(outline: Outline): TreeDataNode {
         new Set(),
         0,
         "",
+        collapsedIds,
       );
 
       const fileId = `fl_${file.id.replace(/-/g, "_")}`;
+      const fileCollapsed = collapsedIds.has(fileId);
+      const firstH1 = file.headings.find((h) => h.level === 1)?.text;
+      const fileLabel = firstH1 || file.name;
       return {
         id: fileId,
         data: {
-          value: file.name,
+          value: fileLabel,
           fileId: file.id,
           group: file.group,
           isFile: true,
+          hasChildren: h1Nodes.length > 0,
           fileColorIndex,
         },
-        children: h1Nodes.length > 0 ? h1Nodes : undefined,
+        children: h1Nodes.length > 0 && !fileCollapsed ? h1Nodes : undefined,
       };
     },
   );
@@ -235,6 +259,7 @@ export function OutlineTreeView({ onClose }: OutlineTreeViewProps) {
   const [outline, setOutline] = useState<Outline | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [collapsedIds, setCollapsedIds] = useState<Set<string>>(() => new Set());
   const containerRef = useRef<HTMLDivElement>(null);
   const graphRef = useRef<InstanceType<typeof Graph> | null>(null);
 
@@ -244,6 +269,7 @@ export function OutlineTreeView({ onClose }: OutlineTreeViewProps) {
       .then((data) => {
         if (!cancelled) {
           setOutline(data);
+          setCollapsedIds(collectDefaultCollapsedIds(data));
           setError(null);
         }
       })
@@ -256,6 +282,15 @@ export function OutlineTreeView({ onClose }: OutlineTreeViewProps) {
     return () => {
       cancelled = true;
     };
+  }, []);
+
+  const toggleCollapse = useCallback((nodeId: string) => {
+    setCollapsedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(nodeId)) next.delete(nodeId);
+      else next.add(nodeId);
+      return next;
+    });
   }, []);
 
   const handleNodeClick = useCallback(
@@ -274,7 +309,7 @@ export function OutlineTreeView({ onClose }: OutlineTreeViewProps) {
   useEffect(() => {
     if (!outline || outline.files.length === 0 || !containerRef.current) return;
 
-    const treeData = outlineToTreeData(outline);
+    const treeData = outlineToTreeData(outline, collapsedIds);
     const graphData = treeToGraphData(treeData, {
       getNodeData: (datum, depth) => {
         const node = datum as TreeDataNode;
@@ -282,8 +317,7 @@ export function OutlineTreeView({ onClose }: OutlineTreeViewProps) {
         const base = node.children
           ? { id: node.id, data: node.data, depth, children: node.children.map((c) => c.id) }
           : { id: node.id, data: node.data, depth };
-        const collapsed = node.data?.isH2 && node.data?.hasLinks;
-        return { ...base, value, ...(collapsed ? { style: { collapsed: true } } : {}) };
+        return { ...base, value };
       },
     });
 
@@ -321,13 +355,13 @@ export function OutlineTreeView({ onClose }: OutlineTreeViewProps) {
           const color = COLORS[colorIdx % COLORS.length] ?? "#5D7092";
 
           const data = d.data as TreeDataNode["data"];
-          const children = (d as { children?: string[] })?.children ?? [];
+          const collapsed = collapsedIds.has(nodeId);
           const canCollapse =
-            (data?.isFile && children.length > 0) ||
-            (data?.isH1 && children.length > 0) ||
+            collapsed ||
+            (data?.isFile && data?.hasChildren) ||
+            (data?.isH1 && data?.hasChildren) ||
             (data?.isH2 && data?.hasLinks) ||
-            (data?.isLink && children.length > 0);
-          const collapsed = d.style?.collapsed === true;
+            (data?.isLink && data?.hasChildren);
           const displayText = (d.value ?? d.data?.value ?? "") as string;
           const isHiddenRoot = nodeId === rootId;
           const labelText = isHiddenRoot
@@ -380,25 +414,6 @@ export function OutlineTreeView({ onClose }: OutlineTreeViewProps) {
         { type: "scroll-canvas", key: "scroll-canvas" },
         { type: "drag-canvas", key: "drag-canvas" },
         { type: "zoom-canvas", key: "zoom-canvas" },
-        {
-          type: "collapse-expand",
-          key: "collapse-expand",
-          trigger: "click",
-          animation: true,
-          enable: (evt: { target?: { id?: string } }) => {
-            const target = evt.target;
-            if (!target?.id) return false;
-            const nodeData = g?.getNodeData(target.id);
-            const data = nodeData?.data as TreeDataNode["data"] | undefined;
-            const children = (nodeData as { children?: string[] })?.children ?? [];
-            const canCollapse =
-              (data?.isFile && children.length > 0) ||
-              (data?.isH1 && children.length > 0) ||
-              (data?.isH2 && data?.hasLinks) ||
-              (data?.isLink && children && children.length > 0);
-            return !!canCollapse;
-          },
-        },
       ],
     });
 
@@ -406,18 +421,28 @@ export function OutlineTreeView({ onClose }: OutlineTreeViewProps) {
     graph.render();
 
     const handleClick = (evt: unknown) => {
-      const e = evt as { target?: { id?: string } };
+      const e = evt as {
+        target?: { id?: string };
+        ctrlKey?: boolean;
+        metaKey?: boolean;
+        nativeEvent?: { ctrlKey?: boolean; metaKey?: boolean };
+      };
       const nodeId = e.target?.id;
       if (!nodeId) return;
       const nodeData = graph.getNodeData(nodeId);
       const data = nodeData?.data as TreeDataNode["data"] | undefined;
-      const children = (nodeData as { children?: string[] })?.children ?? [];
       const canCollapse =
-        (data?.isFile && children.length > 0) ||
-        (data?.isH1 && children.length > 0) ||
+        (data?.isFile && data?.hasChildren) ||
+        (data?.isH1 && data?.hasChildren) ||
         (data?.isH2 && data?.hasLinks) ||
-        (data?.isLink && children && children.length > 0);
-      if (!canCollapse && data) {
+        (data?.isLink && data?.hasChildren);
+      const canOpen = data?.isLink || (data?.isH2 && !data?.hasLinks) || data?.isFile || data?.isH1;
+      const modifier = e.ctrlKey || e.metaKey || e.nativeEvent?.ctrlKey || e.nativeEvent?.metaKey;
+      if (modifier && canOpen && data) {
+        handleNodeClick(nodeId, data);
+      } else if (canCollapse) {
+        toggleCollapse(nodeId);
+      } else if (data) {
         handleNodeClick(nodeId, data);
       }
     };
@@ -439,7 +464,7 @@ export function OutlineTreeView({ onClose }: OutlineTreeViewProps) {
       graph.destroy();
       graphRef.current = null;
     };
-  }, [outline, handleNodeClick]);
+  }, [outline, collapsedIds, handleNodeClick, toggleCollapse]);
 
   if (loading) {
     return (
@@ -507,7 +532,7 @@ export function OutlineTreeView({ onClose }: OutlineTreeViewProps) {
           返回文档
         </button>
         <span className="text-sm text-gh-text-secondary">
-          思维导图：以文件为根；孤节点独立成图；链接可多级展开；按文档着色
+          思维导图：以文件为根；孤节点独立成图；链接可多级展开；按文档着色；可折叠节点点击切换，Ctrl/Cmd+点击打开
         </span>
       </div>
       <div ref={containerRef} className="min-h-0 flex-1" style={{ minHeight: 300 }} />

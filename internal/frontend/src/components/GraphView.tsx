@@ -33,20 +33,43 @@ function nodeDisplayLabels(nodes: { id: string; name: string; path?: string }[])
   return labels;
 }
 
+/** Build edge label: heading · targetName for better identification. */
+function edgeDisplayLabel(
+  e: { label?: string; heading?: string },
+  targetName: string,
+  maxLen = 32
+): string {
+  const safe = (s: string) => s.replace(/["\[\]()|]/g, " ").trim();
+  const target = safe(targetName);
+  if (e.heading) {
+    const h = safe(e.heading);
+    const combined = h ? `${h} · ${target}` : target;
+    return combined.slice(0, maxLen);
+  }
+  if (e.label && e.label.length > 0) {
+    const lab = safe(e.label);
+    if (lab && lab !== target) return lab.slice(0, maxLen);
+  }
+  return target.slice(0, maxLen);
+}
+
 function buildMermaidFlowchart(graph: LinkGraph): string {
   // LR: 一个文件引用多个文件时，被引用的多个文件在右侧并列展示
   const lines: string[] = ["flowchart LR"];
   const nodeIds = new Set<string>();
+  const nodeByName = new Map<string, string>();
   const displayLabels = nodeDisplayLabels(graph.nodes);
   for (const n of graph.nodes) {
     nodeIds.add(n.id);
+    nodeByName.set(n.id, n.name);
     const label = escapeMermaidLabel(displayLabels.get(n.id) ?? n.name);
     lines.push(`  ${n.id}[${label}]`);
   }
   for (const e of graph.edges) {
     if (nodeIds.has(e.from) && nodeIds.has(e.to)) {
-      if (e.label && e.label.length > 0 && e.label.length <= 20) {
-        const lab = e.label.replace(/["\[\]()|]/g, " ").trim().slice(0, 20);
+      const targetName = nodeByName.get(e.to) ?? e.to;
+      const lab = edgeDisplayLabel(e, targetName);
+      if (lab) {
         lines.push(`  ${e.from} -->|${lab}| ${e.to}`);
       } else {
         lines.push(`  ${e.from} --> ${e.to}`);

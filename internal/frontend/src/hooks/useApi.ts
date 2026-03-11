@@ -31,6 +31,7 @@ export interface GraphEdge {
   from: string;
   to: string;
   label?: string;
+  heading?: string;
 }
 
 export interface LinkGraph {
