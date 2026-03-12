@@ -50,9 +50,14 @@ make screenshot
 # CI target (install dev deps + generate + test)
 make ci
 
+# Install to $GOPATH/bin (run after modifications to verify build and install)
+make install
+
 # Frontend dev server with backend proxy (proxies /_/ to localhost:6275)
 cd internal/frontend && pnpm run dev
 ```
+
+**Workflow**: After making code changes, run `make install` to build and install the binary.
 
 ### CLI Flags
 

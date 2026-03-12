@@ -1,10 +1,15 @@
+import html2canvas from "html2canvas";
+import jsPDF from "jspdf";
+
 interface PdfExportButtonProps {
   articleRef: React.RefObject<HTMLElement | null>;
   fileName: string;
 }
 
+const MARGIN = 15; // 左右上下边距 mm
+
 function toAbsoluteUrl(href: string): string {
-  if (!href || href.startsWith("http://") || href.startsWith("https://") || href.startsWith("data:")) {
+  if (!href || href.startsWith("http://") || href.startsWith("https://") || href.startsWith("mailto:")) {
     return href;
   }
   try {
@@ -15,63 +20,82 @@ function toAbsoluteUrl(href: string): string {
 }
 
 export function PdfExportButton({ articleRef, fileName }: PdfExportButtonProps) {
-  const handleExport = () => {
+  const handleExport = async () => {
     const article = articleRef.current;
     if (!article) return;
 
-    const clone = article.cloneNode(true) as HTMLElement;
-    clone.querySelectorAll("img[src]").forEach((img) => {
-      const src = img.getAttribute("src");
-      if (src) img.setAttribute("src", toAbsoluteUrl(src));
-    });
-    clone.querySelectorAll("a[href]").forEach((a) => {
-      const href = a.getAttribute("href");
-      if (href && !href.startsWith("#")) a.setAttribute("href", toAbsoluteUrl(href));
-    });
-    clone.querySelectorAll("button").forEach((btn) => btn.remove());
+    const filename = fileName.endsWith(".pdf") ? fileName : `${fileName.replace(/\.(md|mdx)$/i, "")}.pdf`;
 
-    const html = `<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>${escapeHtml(fileName)}</title>
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/github-markdown-css/5.5.0/github-markdown.min.css">
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css">
-  <style>
-    body { margin: 0; padding: 24px; background: #fff; color: #1f2328; }
-    .markdown-body { max-width: 980px; margin: 0 auto; box-sizing: border-box; }
-    .markdown-body pre, .markdown-body table, .markdown-body .markdown-alert,
-    .markdown-body .katex-display, .markdown-body .overflow-x-auto { page-break-inside: avoid; }
-    .markdown-body h1, .markdown-body h2, .markdown-body h3 { page-break-after: avoid; }
-    @media print {
-      body { padding: 0; background: #fff; }
-      .markdown-body { max-width: none; }
+    try {
+      const canvas = await html2canvas(article, {
+        scale: 2,
+        useCORS: true,
+        logging: false,
+      });
+      // 在 canvas 上绘制链接高亮（浅蓝背景），再转图片
+      const articleRect = article.getBoundingClientRect();
+      const canvasScaleX = canvas.width / article.offsetWidth;
+      const canvasScaleY = canvas.height / article.offsetHeight;
+      const ctx = canvas.getContext("2d");
+      if (ctx) {
+        ctx.save();
+        ctx.fillStyle = "rgba(200, 220, 255, 0.45)";
+        article.querySelectorAll<HTMLAnchorElement>("a[href]").forEach((a) => {
+          const href = a.getAttribute("href");
+          if (!href || href.startsWith("#")) return;
+          const url = toAbsoluteUrl(href);
+          if (!url.startsWith("http://") && !url.startsWith("https://")) return;
+          const rect = a.getBoundingClientRect();
+          const x = (rect.left - articleRect.left) * canvasScaleX;
+          const y = (rect.top - articleRect.top) * canvasScaleY;
+          const w = rect.width * canvasScaleX;
+          const h = rect.height * canvasScaleY;
+          if (w > 0 && h > 0) ctx.fillRect(x, y, w, h);
+        });
+        ctx.restore();
+      }
+      const imgData = canvas.toDataURL("image/jpeg", 0.95);
+      const pageWidth = 210; // A4 宽度 mm
+      const contentWidth = pageWidth - 2 * MARGIN;
+      const contentHeight = (canvas.height * contentWidth) / canvas.width;
+      const pageHeight = contentHeight + 2 * MARGIN; // 单页不分页
+
+      const pdf = new jsPDF({ unit: "mm", format: [pageWidth, pageHeight] });
+      pdf.addImage(imgData, "JPEG", MARGIN, MARGIN, contentWidth, contentHeight);
+
+      // 提取标题并添加 PDF 书签（大纲）
+      const headings = article.querySelectorAll<HTMLHeadingElement>("h1, h2, h3");
+      const parentStack: (unknown | null)[] = [null, null, null]; // h1, h2, h3 的父级
+      headings.forEach((h) => {
+        const level = parseInt(h.tagName[1], 10) - 1; // 0=h1, 1=h2, 2=h3
+        const title = h.textContent?.trim() || "";
+        if (!title) return;
+        const parent = level > 0 ? parentStack[level - 1] : null;
+        const item = pdf.outline.add(parent, title, { pageNumber: 1 });
+        parentStack[level] = item;
+        for (let i = level + 1; i < 3; i++) parentStack[i] = null;
+      });
+
+      // 添加可点击链接（高亮已在 canvas 中绘制）
+      const scaleX = contentWidth / article.offsetWidth;
+      const scaleY = contentHeight / article.offsetHeight;
+      article.querySelectorAll<HTMLAnchorElement>("a[href]").forEach((a) => {
+        const href = a.getAttribute("href");
+        if (!href || href.startsWith("#")) return;
+        const url = toAbsoluteUrl(href);
+        if (!url.startsWith("http://") && !url.startsWith("https://")) return;
+        const rect = a.getBoundingClientRect();
+        const x = MARGIN + (rect.left - articleRect.left) * scaleX;
+        const y = MARGIN + (rect.top - articleRect.top) * scaleY;
+        const w = rect.width * scaleX;
+        const h = rect.height * scaleY;
+        if (w > 0 && h > 0) pdf.link(x, y, w, h, { url });
+      });
+
+      pdf.save(filename);
+    } catch {
+      alert("导出失败，请尝试使用浏览器打印（Ctrl/Cmd+P）另存为 PDF");
     }
-  </style>
-</head>
-<body>
-  <article class="markdown-body">
-    ${clone.innerHTML}
-  </article>
-</body>
-</html>`;
-
-    const win = window.open("", "_blank");
-    if (!win) {
-      alert("请允许弹窗以导出 PDF");
-      return;
-    }
-    win.document.write(html);
-    win.document.close();
-
-    win.onload = () => {
-      win.focus();
-      setTimeout(() => {
-        win.print();
-        win.onafterprint = () => win.close();
-      }, 300);
-    };
   };
 
   return (
@@ -79,7 +103,7 @@ export function PdfExportButton({ articleRef, fileName }: PdfExportButtonProps) 
       type="button"
       className="flex items-center justify-center bg-transparent border border-gh-border rounded-md p-1.5 text-gh-text-secondary cursor-pointer transition-colors duration-150 hover:bg-gh-bg-hover"
       onClick={handleExport}
-      title="导出 PDF（打印对话框中选择「另存为 PDF」）"
+      title="导出 PDF（完整内容，不截断）"
       aria-label="Export PDF"
     >
       <svg
@@ -97,10 +121,4 @@ export function PdfExportButton({ articleRef, fileName }: PdfExportButtonProps) 
       </svg>
     </button>
   );
-}
-
-function escapeHtml(s: string): string {
-  const div = document.createElement("div");
-  div.textContent = s;
-  return div.innerHTML;
 }
