@@ -32,7 +32,7 @@ function parseOutlineToPack(outline: Outline): PackNodeData {
   const fileIds = new Set(outline.files.map((f) => f.id));
   const fileById = new Map(outline.files.map((f) => [f.id, f]));
 
-  const children: PackNodeData[] = outline.files.map((file) => {
+  const fileNodes: PackNodeData[] = outline.files.map((file) => {
     let h1Text = file.name;
     const nodeChildren: PackNodeData[] = [];
 
@@ -102,6 +102,42 @@ function parseOutlineToPack(outline: Outline): PackNodeData {
       children: nodeChildren.length > 0 ? nodeChildren : undefined,
     };
   });
+
+  // 统计每个文件被多少其他文件引用
+  const linkedByCount = new Map<string, number>();
+  for (const f of outline.files) linkedByCount.set(f.id, 0);
+  for (const file of outline.files) {
+    const linkedIds = new Set<string>();
+    for (const h of file.headings) {
+      for (const lf of h.linkedFiles ?? []) {
+        if (fileIds.has(lf.fileId) && lf.fileId !== file.id) linkedIds.add(lf.fileId);
+      }
+      for (const id of h.linkedFileIds ?? []) {
+        if (fileIds.has(id) && id !== file.id) linkedIds.add(id);
+      }
+    }
+    for (const tid of linkedIds) linkedByCount.set(tid, (linkedByCount.get(tid) ?? 0) + 1);
+  }
+
+  const hasContent = (n: PackNodeData) => n.children && n.children.length > 0;
+  const withChildren = fileNodes.filter(hasContent);
+  const orphans = fileNodes.filter((n) => !hasContent(n));
+  // 被其他文档引用的文件不单独显示，只出现在引用它的文档圆内（避免重复节点）
+  const linkedByOthers = new Set(
+    [...linkedByCount.entries()].filter(([, c]) => c > 0).map(([id]) => id),
+  );
+  const rootWithChildren = withChildren.filter((n) => !linkedByOthers.has(n.fileId!));
+  const rootOrphans = orphans.filter((n) => !linkedByOthers.has(n.fileId!));
+
+  const children: PackNodeData[] = [...rootWithChildren];
+  if (rootOrphans.length > 0) {
+    children.push({
+      name: "其他",
+      type: "root",
+      value: rootOrphans.length,
+      children: rootOrphans,
+    });
+  }
 
   return {
     name: "root",
