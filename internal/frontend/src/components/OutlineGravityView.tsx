@@ -28,11 +28,74 @@ interface PackNodeData {
   children?: PackNodeData[];
 }
 
+function getLinkedIds(file: Outline["files"][number], fileIds: Set<string>): Set<string> {
+  const linkedIds = new Set<string>();
+  for (const h of file.headings) {
+    for (const lf of h.linkedFiles ?? []) {
+      if (fileIds.has(lf.fileId) && lf.fileId !== file.id) linkedIds.add(lf.fileId);
+    }
+    for (const id of h.linkedFileIds ?? []) {
+      if (fileIds.has(id) && id !== file.id) linkedIds.add(id);
+    }
+  }
+  return linkedIds;
+}
+
+/** 强连通分量：Tarjan 算法，返回每个节点所属的 SCC 编号（同一分量内编号相同） */
+function findSCCs(
+  nodes: string[],
+  getOutgoing: (id: string) => string[],
+): Map<string, number> {
+  const index = new Map<string, number>();
+  const low = new Map<string, number>();
+  const onStack = new Map<string, boolean>();
+  const stack: string[] = [];
+  const sccId = new Map<string, number>();
+  let idx = 0;
+  let sccCount = 0;
+
+  function strongConnect(v: string) {
+    index.set(v, idx);
+    low.set(v, idx);
+    idx++;
+    stack.push(v);
+    onStack.set(v, true);
+
+    for (const w of getOutgoing(v)) {
+      if (!index.has(w)) {
+        strongConnect(w);
+        low.set(v, Math.min(low.get(v)!, low.get(w)!));
+      } else if (onStack.get(w)) {
+        low.set(v, Math.min(low.get(v)!, index.get(w)!));
+      }
+    }
+
+    if (low.get(v) === index.get(v)) {
+      let w: string;
+      do {
+        w = stack.pop()!;
+        onStack.set(w, false);
+        sccId.set(w, sccCount);
+      } while (w !== v);
+      sccCount++;
+    }
+  }
+
+  for (const n of nodes) {
+    if (!index.has(n)) strongConnect(n);
+  }
+  return sccId;
+}
+
 function parseOutlineToPack(outline: Outline): PackNodeData {
   const fileIds = new Set(outline.files.map((f) => f.id));
   const fileById = new Map(outline.files.map((f) => [f.id, f]));
 
-  const fileNodes: PackNodeData[] = outline.files.map((file) => {
+  // 递归构建：A 链接 B → A 的圆包含 B 的圆；ancestors 避免循环
+  function buildFileNode(
+    file: Outline["files"][number],
+    ancestors: Set<string>,
+  ): PackNodeData {
     let h1Text = file.name;
     const nodeChildren: PackNodeData[] = [];
 
@@ -67,19 +130,12 @@ function parseOutlineToPack(outline: Outline): PackNodeData {
       }
     }
 
-    const linkedIds = new Set<string>();
-    for (const h of file.headings) {
-      for (const lf of h.linkedFiles ?? []) {
-        if (fileIds.has(lf.fileId) && lf.fileId !== file.id) linkedIds.add(lf.fileId);
-      }
-      for (const id of h.linkedFileIds ?? []) {
-        if (fileIds.has(id) && id !== file.id) linkedIds.add(id);
-      }
-    }
-
+    const linkedIds = getLinkedIds(file, fileIds);
     for (const tid of linkedIds) {
       const target = fileById.get(tid);
-      if (target) {
+      if (!target) continue;
+      if (ancestors.has(tid)) {
+        // 循环：只加浅层占位，不递归
         const targetH1 = target.headings.find((h) => h.level === 1)?.text;
         nodeChildren.push({
           name: targetH1 ?? target.name,
@@ -89,6 +145,10 @@ function parseOutlineToPack(outline: Outline): PackNodeData {
           h1Text: targetH1 ?? target.name,
           value: 8,
         });
+      } else {
+        const nextAncestors = new Set(ancestors);
+        nextAncestors.add(file.id);
+        nodeChildren.push(buildFileNode(target, nextAncestors));
       }
     }
 
@@ -101,43 +161,39 @@ function parseOutlineToPack(outline: Outline): PackNodeData {
       value: 1,
       children: nodeChildren.length > 0 ? nodeChildren : undefined,
     };
-  });
+  }
 
-  // 统计每个文件被多少其他文件引用
+  // 未被引用的 = 顶层；被引用的 = 只在引用它的圆内
   const linkedByCount = new Map<string, number>();
   for (const f of outline.files) linkedByCount.set(f.id, 0);
   for (const file of outline.files) {
-    const linkedIds = new Set<string>();
-    for (const h of file.headings) {
-      for (const lf of h.linkedFiles ?? []) {
-        if (fileIds.has(lf.fileId) && lf.fileId !== file.id) linkedIds.add(lf.fileId);
-      }
-      for (const id of h.linkedFileIds ?? []) {
-        if (fileIds.has(id) && id !== file.id) linkedIds.add(id);
-      }
-    }
+    const linkedIds = getLinkedIds(file, fileIds);
     for (const tid of linkedIds) linkedByCount.set(tid, (linkedByCount.get(tid) ?? 0) + 1);
   }
-
-  const hasContent = (n: PackNodeData) => n.children && n.children.length > 0;
-  const withChildren = fileNodes.filter(hasContent);
-  const orphans = fileNodes.filter((n) => !hasContent(n));
-  // 被其他文档引用的文件不单独显示，只出现在引用它的文档圆内（避免重复节点）
   const linkedByOthers = new Set(
     [...linkedByCount.entries()].filter(([, c]) => c > 0).map(([id]) => id),
   );
-  const rootWithChildren = withChildren.filter((n) => !linkedByOthers.has(n.fileId!));
-  const rootOrphans = orphans.filter((n) => !linkedByOthers.has(n.fileId!));
+  let rootFileIds = outline.files.filter((f) => !linkedByOthers.has(f.id)).map((f) => f.id);
 
-  const children: PackNodeData[] = [...rootWithChildren];
-  if (rootOrphans.length > 0) {
-    children.push({
-      name: "其他",
-      type: "root",
-      value: rootOrphans.length,
-      children: rootOrphans,
-    });
+  // 若全部被引用：按 SCC 选代表，每个强连通分量一个顶层入口
+  if (rootFileIds.length === 0) {
+    const linksOut = (id: string) => {
+      const f = fileById.get(id);
+      return f ? [...getLinkedIds(f, fileIds)] : [];
+    };
+    const sccMap = findSCCs([...fileIds], linksOut);
+    const sccToRep = new Map<number, string>();
+    for (const id of fileIds) {
+      const scc = sccMap.get(id)!;
+      if (!sccToRep.has(scc)) sccToRep.set(scc, id);
+    }
+    rootFileIds = [...sccToRep.values()];
   }
+
+  const children: PackNodeData[] = rootFileIds
+    .map((id) => fileById.get(id)!)
+    .filter(Boolean)
+    .map((f) => buildFileNode(f, new Set()));
 
   return {
     name: "root",
