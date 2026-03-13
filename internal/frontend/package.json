@@ -11,7 +11,7 @@
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "screenshots": "node scripts/screenshots.mjs",
-    "lint": "oxlint src/",
+    "lint": "oxlint -c .oxlintrc.json --disable-nested-config src/",
     "fmt": "oxfmt --write src/",
     "fmt:check": "oxfmt --check src/"
   },
