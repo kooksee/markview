@@ -78,11 +78,15 @@ function getDefaultFullscreenZoom(complexity: number): number {
   return 1;
 }
 
+function shouldFitMermaidToWidth(complexity: number, isFullscreen: boolean): boolean {
+  return isFullscreen || complexity >= 120;
+}
+
 function cleanupMermaidErrors() {
   document.querySelectorAll("[id^='dmermaid-']").forEach((el) => el.remove());
 }
 
-function normalizeMermaidSvg(svg: string): string {
+function normalizeMermaidSvg(svg: string, fitToWidth: boolean): string {
   try {
     const doc = new DOMParser().parseFromString(svg, "image/svg+xml");
     const svgEl = doc.documentElement;
@@ -103,11 +107,15 @@ function normalizeMermaidSvg(svg: string): string {
     }
 
     const prevStyle = svgEl.getAttribute("style") || "";
-    const normalizedStyle = "width:100%;height:auto;max-width:100%;";
+    const normalizedStyle = fitToWidth
+      ? "width:100%;height:auto;max-width:100%;"
+      : "height:auto;max-width:100%;";
 
     svgEl.setAttribute("preserveAspectRatio", "xMinYMin meet");
-    svgEl.setAttribute("width", "100%");
-    svgEl.removeAttribute("height");
+    if (fitToWidth || !widthAttr) {
+      svgEl.setAttribute("width", "100%");
+      svgEl.removeAttribute("height");
+    }
     svgEl.setAttribute("style", prevStyle ? `${prevStyle};${normalizedStyle}` : normalizedStyle);
 
     return new XMLSerializer().serializeToString(svgEl);
@@ -155,6 +163,10 @@ export function MermaidBlock({ code }: { code: string }) {
   const defaultFullscreenZoom = useMemo(
     () => getDefaultFullscreenZoom(mermaidComplexity),
     [mermaidComplexity],
+  );
+  const fitToWidth = useMemo(
+    () => shouldFitMermaidToWidth(mermaidComplexity, isFullscreen),
+    [isFullscreen, mermaidComplexity],
   );
   const blockRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -282,7 +294,7 @@ export function MermaidBlock({ code }: { code: string }) {
       mermaid.initialize({ startOnLoad: false, theme: getMermaidTheme() });
       renderMermaid(code, width)
         .then((renderedSvg) => {
-          if (!cancelled) setSvg(normalizeMermaidSvg(renderedSvg));
+          if (!cancelled) setSvg(normalizeMermaidSvg(renderedSvg, fitToWidth));
         })
         .catch(() => {
           if (!cancelled) setSvg("");
@@ -311,7 +323,7 @@ export function MermaidBlock({ code }: { code: string }) {
       observer.disconnect();
       resizeObserver?.disconnect();
     };
-  }, [code, isFullscreen, resolveRenderWidth]);
+  }, [code, fitToWidth, isFullscreen, resolveRenderWidth]);
 
   if (svg) {
     const canvasStyle = isFullscreen
@@ -320,13 +332,16 @@ export function MermaidBlock({ code }: { code: string }) {
         transformOrigin: "center center",
       }
       : {
-        width: "100%",
+        width: fitToWidth ? "100%" : "auto",
         maxWidth: "100%",
         transformOrigin: "top left",
       };
 
     return (
-      <div ref={blockRef} className="relative group mermaid-block">
+      <div
+        ref={blockRef}
+        className={`relative group mermaid-block${fitToWidth ? " mermaid-block--fit-width" : ""}`}
+      >
         <div
           ref={containerRef}
           data-testid="mermaid-interaction-surface"

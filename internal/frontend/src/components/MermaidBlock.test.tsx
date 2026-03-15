@@ -86,7 +86,7 @@ describe("MermaidBlock", () => {
     expect(screen.getByTitle("Fullscreen")).toBeInTheDocument();
   });
 
-  it("normalizes rendered svg to fit container width", async () => {
+  it("keeps small diagram svg near natural width and constrained by max-width", async () => {
     vi.mocked(mermaid.render).mockResolvedValue({
       svg: '<svg width="240" height="120"><g><text>diagram</text></g></svg>',
       bindFunctions: undefined,
@@ -98,9 +98,10 @@ describe("MermaidBlock", () => {
     await waitFor(() => {
       const svg = container.querySelector("svg");
       expect(svg).toBeTruthy();
-      expect(svg?.getAttribute("width")).toBe("100%");
+      expect(svg?.getAttribute("width")).toBe("240");
       expect(svg?.getAttribute("viewBox")).toBe("0 0 240 120");
       expect(svg?.getAttribute("preserveAspectRatio")).toBe("xMinYMin meet");
+      expect(svg?.getAttribute("style") || "").toContain("max-width:100%");
     });
   });
 
@@ -296,7 +297,7 @@ describe("MermaidBlock", () => {
 
   it("keeps inline mermaid width within markdown container", async () => {
     vi.mocked(mermaid.render).mockResolvedValue({
-      svg: "<svg>diagram</svg>",
+      svg: '<svg width="240" height="120">diagram</svg>',
       bindFunctions: undefined,
       diagramType: "flowchart",
     });
@@ -313,6 +314,9 @@ describe("MermaidBlock", () => {
       const style = canvas.getAttribute("style") || "";
       expect(style).toContain("width: 100%");
       expect(style).not.toContain("220%");
+
+      const svg = canvas.querySelector("svg");
+      expect(svg?.getAttribute("width")).toBe("100%");
     });
   });
 
