@@ -44,6 +44,11 @@ let mermaidQueue: Promise<void> = Promise.resolve();
 const MERMAID_MIN_ZOOM = 0.5;
 const MERMAID_MAX_ZOOM = 10;
 const MERMAID_ZOOM_STEP = 0.1;
+const MERMAID_WIDE_RATIO_THRESHOLD = 1.8;
+const MERMAID_TALL_RATIO_THRESHOLD = 1.45;
+const MERMAID_WIDE_RE_RENDER_FACTOR = 2.2;
+const MERMAID_WIDE_RE_RENDER_MIN_WIDTH = 1400;
+const MERMAID_WIDE_RE_RENDER_MAX_WIDTH = 3200;
 
 function estimateMermaidComplexity(code: string): number {
   const lines = code
@@ -82,11 +87,95 @@ function shouldFitMermaidToWidth(complexity: number, isFullscreen: boolean): boo
   return isFullscreen || complexity >= 120;
 }
 
+interface MermaidDimensions {
+  width: number;
+  height: number;
+}
+
+interface MermaidLayout {
+  fitToWidth: boolean;
+  preserveScale: boolean;
+  constrainHeight: boolean;
+}
+
+function parseSvgDimensionValue(value: string | null): number | null {
+  if (!value) return null;
+  const parsed = parseFloat(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+function parseMermaidSvgDimensions(svg: string): MermaidDimensions | null {
+  try {
+    const doc = new DOMParser().parseFromString(svg, "image/svg+xml");
+    const svgEl = doc.documentElement;
+    if (!svgEl || svgEl.tagName.toLowerCase() !== "svg") return null;
+
+    const width = parseSvgDimensionValue(svgEl.getAttribute("width"));
+    const height = parseSvgDimensionValue(svgEl.getAttribute("height"));
+    if (width && height) {
+      return { width, height };
+    }
+
+    const viewBox = svgEl.getAttribute("viewBox");
+    if (!viewBox) return null;
+    const parts = viewBox.split(/[\s,]+/).map((part) => parseFloat(part));
+    if (parts.length !== 4) return null;
+
+    const vbWidth = parts[2];
+    const vbHeight = parts[3];
+    if (!Number.isFinite(vbWidth) || !Number.isFinite(vbHeight) || vbWidth <= 0 || vbHeight <= 0) {
+      return null;
+    }
+
+    return { width: vbWidth, height: vbHeight };
+  } catch {
+    return null;
+  }
+}
+
+function resolveMermaidLayout(
+  complexity: number,
+  isFullscreen: boolean,
+  dimensions: MermaidDimensions | null,
+): MermaidLayout {
+  if (isFullscreen) {
+    return { fitToWidth: true, preserveScale: false, constrainHeight: false };
+  }
+
+  const defaultFit = shouldFitMermaidToWidth(complexity, false);
+
+  if (!dimensions) {
+    return { fitToWidth: defaultFit, preserveScale: false, constrainHeight: false };
+  }
+
+  const ratio = dimensions.width / dimensions.height;
+  const isWide = ratio >= MERMAID_WIDE_RATIO_THRESHOLD;
+  const isTall = dimensions.height / dimensions.width >= MERMAID_TALL_RATIO_THRESHOLD;
+
+  if (isWide) {
+    return { fitToWidth: false, preserveScale: true, constrainHeight: false };
+  }
+
+  if (isTall) {
+    return { fitToWidth: false, preserveScale: false, constrainHeight: true };
+  }
+
+  return { fitToWidth: defaultFit, preserveScale: false, constrainHeight: false };
+}
+
+function getWideRerenderWidth(baseWidth: number): number {
+  const scaled = Math.round(baseWidth * MERMAID_WIDE_RE_RENDER_FACTOR);
+  return Math.min(
+    MERMAID_WIDE_RE_RENDER_MAX_WIDTH,
+    Math.max(MERMAID_WIDE_RE_RENDER_MIN_WIDTH, scaled),
+  );
+}
+
 function cleanupMermaidErrors() {
   document.querySelectorAll("[id^='dmermaid-']").forEach((el) => el.remove());
 }
 
-function normalizeMermaidSvg(svg: string, fitToWidth: boolean): string {
+function normalizeMermaidSvg(svg: string, layout: MermaidLayout): string {
   try {
     const doc = new DOMParser().parseFromString(svg, "image/svg+xml");
     const svgEl = doc.documentElement;
@@ -98,21 +187,49 @@ function normalizeMermaidSvg(svg: string, fitToWidth: boolean): string {
     const heightAttr = svgEl.getAttribute("height");
     const viewBox = svgEl.getAttribute("viewBox");
 
-    if (!viewBox && widthAttr && heightAttr) {
-      const width = parseFloat(widthAttr);
-      const height = parseFloat(heightAttr);
-      if (width > 0 && height > 0) {
-        svgEl.setAttribute("viewBox", `0 0 ${width} ${height}`);
+    const width = parseSvgDimensionValue(widthAttr);
+    const height = parseSvgDimensionValue(heightAttr);
+
+    let intrinsicWidth = width;
+    let intrinsicHeight = height;
+
+    if ((!intrinsicWidth || !intrinsicHeight) && viewBox) {
+      const parts = viewBox.split(/[\s,]+/).map((part) => parseFloat(part));
+      if (parts.length === 4) {
+        const vbWidth = parts[2];
+        const vbHeight = parts[3];
+        if (Number.isFinite(vbWidth) && vbWidth > 0) {
+          intrinsicWidth = vbWidth;
+        }
+        if (Number.isFinite(vbHeight) && vbHeight > 0) {
+          intrinsicHeight = vbHeight;
+        }
+      }
+    }
+
+    if (!viewBox && intrinsicWidth && intrinsicHeight) {
+      if (intrinsicWidth > 0 && intrinsicHeight > 0) {
+        svgEl.setAttribute("viewBox", `0 0 ${intrinsicWidth} ${intrinsicHeight}`);
       }
     }
 
     const prevStyle = svgEl.getAttribute("style") || "";
-    const normalizedStyle = fitToWidth
+    const normalizedStyle = layout.fitToWidth
       ? "width:100%;height:auto;max-width:100%;"
-      : "height:auto;max-width:100%;";
+      : layout.preserveScale
+        ? "height:auto;max-width:none;"
+        : "height:auto;max-width:100%;";
 
     svgEl.setAttribute("preserveAspectRatio", "xMinYMin meet");
-    if (fitToWidth || !widthAttr) {
+    if (layout.fitToWidth) {
+      svgEl.setAttribute("width", "100%");
+      svgEl.removeAttribute("height");
+    } else if (layout.preserveScale) {
+      if (intrinsicWidth && intrinsicHeight) {
+        svgEl.setAttribute("width", String(intrinsicWidth));
+        svgEl.setAttribute("height", String(intrinsicHeight));
+      }
+    } else if (!widthAttr) {
       svgEl.setAttribute("width", "100%");
       svgEl.removeAttribute("height");
     }
@@ -165,10 +282,11 @@ export function MermaidBlock({ code }: { code: string }) {
     () => getDefaultFullscreenZoom(mermaidComplexity),
     [mermaidComplexity],
   );
-  const fitToWidth = useMemo(
-    () => shouldFitMermaidToWidth(mermaidComplexity, isFullscreen),
-    [isFullscreen, mermaidComplexity],
-  );
+  const [layout, setLayout] = useState<MermaidLayout>(() => ({
+    fitToWidth: shouldFitMermaidToWidth(mermaidComplexity, false),
+    preserveScale: false,
+    constrainHeight: false,
+  }));
   const blockRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const panStartRef = useRef<{ x: number; y: number; panX: number; panY: number } | null>(null);
@@ -276,40 +394,52 @@ export function MermaidBlock({ code }: { code: string }) {
     });
 
     const baseWidth = width ?? 800;
-    const scale = getMermaidRenderScale(mermaidComplexity, isFullscreen);
-    const scaledWidth = Math.round(baseWidth * scale);
     if (isFullscreen) {
+      const scale = getMermaidRenderScale(mermaidComplexity, true);
+      const scaledWidth = Math.round(baseWidth * scale);
       const maxWidth = Math.max(window.innerWidth * 6, baseWidth);
       return Math.max(baseWidth, Math.min(scaledWidth, maxWidth));
     }
 
-    const minWidth = Math.max(280, Math.round(baseWidth * 0.55));
-    return Math.min(baseWidth, Math.max(minWidth, scaledWidth));
+    // Inline mode: avoid complexity-based downscaling to prevent tiny wide diagrams.
+    return baseWidth;
   }, [isFullscreen, mermaidComplexity]);
 
   useEffect(() => {
     let cancelled = false;
 
-    const doRender = () => {
+    const doRender = async () => {
       const width = resolveRenderWidth();
       setRenderStatus("pending");
       mermaid.initialize({ startOnLoad: false, theme: getMermaidTheme() });
-      renderMermaid(code, width)
-        .then((renderedSvg) => {
-          if (!cancelled) {
-            setSvg(normalizeMermaidSvg(renderedSvg, fitToWidth));
-            setRenderStatus("rendered");
+      try {
+        let renderedSvg = await renderMermaid(code, width);
+        let dimensions = parseMermaidSvgDimensions(renderedSvg);
+        let nextLayout = resolveMermaidLayout(mermaidComplexity, isFullscreen, dimensions);
+
+        if (!isFullscreen && nextLayout.preserveScale) {
+          const wideWidth = getWideRerenderWidth(width);
+          if (wideWidth > width + 40) {
+            renderedSvg = await renderMermaid(code, wideWidth);
+            dimensions = parseMermaidSvgDimensions(renderedSvg);
+            nextLayout = resolveMermaidLayout(mermaidComplexity, isFullscreen, dimensions);
           }
-        })
-        .catch(() => {
-          if (!cancelled) {
-            setSvg("");
-            setRenderStatus("failed");
-          }
-        });
+        }
+
+        if (!cancelled) {
+          setLayout(nextLayout);
+          setSvg(normalizeMermaidSvg(renderedSvg, nextLayout));
+          setRenderStatus("rendered");
+        }
+      } catch {
+        if (!cancelled) {
+          setSvg("");
+          setRenderStatus("failed");
+        }
+      }
     };
 
-    doRender();
+    void doRender();
 
     // Re-render on theme change
     const observer = new MutationObserver(() => doRender());
@@ -331,7 +461,7 @@ export function MermaidBlock({ code }: { code: string }) {
       observer.disconnect();
       resizeObserver?.disconnect();
     };
-  }, [code, fitToWidth, isFullscreen, resolveRenderWidth]);
+  }, [code, isFullscreen, mermaidComplexity, resolveRenderWidth]);
 
   if (svg) {
     const canvasStyle = isFullscreen
@@ -340,21 +470,30 @@ export function MermaidBlock({ code }: { code: string }) {
         transformOrigin: "center center",
       }
       : {
-        width: fitToWidth ? "100%" : "auto",
-        maxWidth: "100%",
+        width: layout.fitToWidth ? "100%" : "auto",
+        maxWidth: layout.preserveScale ? "none" : "100%",
         transformOrigin: "top left",
       };
+
+    const blockClassName = [
+      "relative group mermaid-block",
+      layout.fitToWidth ? "mermaid-block--fit-width" : "",
+      layout.preserveScale ? "mermaid-block--preserve-scale" : "",
+      !isFullscreen && layout.constrainHeight ? "mermaid-block--constrain-height" : "",
+    ]
+      .filter((name) => name.length > 0)
+      .join(" ");
 
     return (
       <div
         ref={blockRef}
         data-mermaid-render-status={renderStatus}
-        className={`relative group mermaid-block${fitToWidth ? " mermaid-block--fit-width" : ""}`}
+        className={blockClassName}
       >
         <div
           ref={containerRef}
           data-testid="mermaid-interaction-surface"
-          className={`mermaid-render ${isFullscreen ? "mermaid-render--interactive cursor-grab active:cursor-grabbing select-none" : "overflow-x-auto"}`}
+          className={`mermaid-render ${isFullscreen ? "mermaid-render--interactive cursor-grab active:cursor-grabbing select-none" : "overflow-auto"}`}
           onWheel={handleSurfaceWheel}
           onMouseDown={handleSurfaceMouseDown}
           onMouseMove={handleSurfaceMouseMove}

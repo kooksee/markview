@@ -65,6 +65,21 @@ body,
   width: 100%;
 }
 
+.markdown-body .mermaid-block.mermaid-block--preserve-scale .mermaid-render svg {
+  width: auto;
+  max-width: none;
+}
+
+.markdown-body .mermaid-block.mermaid-block--preserve-scale .mermaid-canvas {
+  width: auto;
+  max-width: none;
+  min-width: max-content;
+}
+
+.markdown-body .mermaid-block.mermaid-block--constrain-height .mermaid-render {
+  max-height: min(72vh, 900px);
+}
+
 .markdown-body .mermaid-block .mermaid-render {
   width: 100%;
   max-width: 100%;
