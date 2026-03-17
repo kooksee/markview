@@ -295,7 +295,7 @@ describe("MermaidBlock", () => {
     }
   });
 
-  it("preserves width for very wide mermaid diagrams", async () => {
+  it("fits very wide mermaid diagrams within markdown width", async () => {
     vi.mocked(mermaid.render).mockResolvedValue({
       svg: '<svg width="240" height="120">diagram</svg>',
       bindFunctions: undefined,
@@ -312,22 +312,12 @@ describe("MermaidBlock", () => {
     await waitFor(() => {
       const canvas = screen.getByTestId("mermaid-pan-canvas");
       const style = canvas.getAttribute("style") || "";
-      expect(style).toContain("width: auto");
-      expect(style).toContain("max-width: none");
+      expect(style).toContain("width: 100%");
+      expect(style).toContain("max-width: 100%");
 
       const svg = canvas.querySelector("svg");
-      expect(svg?.getAttribute("width")).toBe("240");
-      expect(svg?.getAttribute("style") || "").toContain("max-width:none");
-    });
-
-    await waitFor(() => {
-      const widths = vi
-        .mocked(mermaid.render)
-        .mock.calls.map((call) => parseFloat((call[2] as HTMLElement).style.width || "0"))
-        .filter((value) => Number.isFinite(value) && value > 0);
-
-      expect(widths.length).toBeGreaterThanOrEqual(2);
-      expect(Math.max(...widths)).toBeGreaterThanOrEqual(1400);
+      expect(svg?.getAttribute("width")).toBe("100%");
+      expect(svg?.getAttribute("style") || "").toContain("max-width:100%");
     });
   });
 
@@ -351,7 +341,7 @@ describe("MermaidBlock", () => {
     });
   });
 
-  it("adds explicit size for wide viewBox-only svg to prevent zero-height collapse", async () => {
+  it("keeps wide viewBox-only svg within markdown width", async () => {
     vi.mocked(mermaid.render).mockResolvedValue({
       svg: '<svg viewBox="0 0 2200 420">diagram</svg>',
       bindFunctions: undefined,
@@ -363,9 +353,9 @@ describe("MermaidBlock", () => {
     await waitFor(() => {
       const canvas = screen.getByTestId("mermaid-pan-canvas");
       const svg = canvas.querySelector("svg");
-      expect(svg?.getAttribute("width")).toBe("2200");
-      expect(svg?.getAttribute("height")).toBe("420");
-      expect(svg?.getAttribute("style") || "").toContain("max-width:none");
+      expect(svg?.getAttribute("width")).toBe("100%");
+      expect(svg?.getAttribute("height")).toBeNull();
+      expect(svg?.getAttribute("style") || "").toContain("max-width:100%");
     });
   });
 

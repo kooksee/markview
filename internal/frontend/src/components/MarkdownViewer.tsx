@@ -46,9 +46,6 @@ const MERMAID_MAX_ZOOM = 10;
 const MERMAID_ZOOM_STEP = 0.1;
 const MERMAID_WIDE_RATIO_THRESHOLD = 1.8;
 const MERMAID_TALL_RATIO_THRESHOLD = 1.45;
-const MERMAID_WIDE_RE_RENDER_FACTOR = 2.2;
-const MERMAID_WIDE_RE_RENDER_MIN_WIDTH = 1400;
-const MERMAID_WIDE_RE_RENDER_MAX_WIDTH = 3200;
 
 function estimateMermaidComplexity(code: string): number {
   const lines = code
@@ -153,7 +150,7 @@ function resolveMermaidLayout(
   const isTall = dimensions.height / dimensions.width >= MERMAID_TALL_RATIO_THRESHOLD;
 
   if (isWide) {
-    return { fitToWidth: false, preserveScale: true, constrainHeight: false };
+    return { fitToWidth: true, preserveScale: false, constrainHeight: false };
   }
 
   if (isTall) {
@@ -161,14 +158,6 @@ function resolveMermaidLayout(
   }
 
   return { fitToWidth: defaultFit, preserveScale: false, constrainHeight: false };
-}
-
-function getWideRerenderWidth(baseWidth: number): number {
-  const scaled = Math.round(baseWidth * MERMAID_WIDE_RE_RENDER_FACTOR);
-  return Math.min(
-    MERMAID_WIDE_RE_RENDER_MAX_WIDTH,
-    Math.max(MERMAID_WIDE_RE_RENDER_MIN_WIDTH, scaled),
-  );
 }
 
 function cleanupMermaidErrors() {
@@ -416,15 +405,6 @@ export function MermaidBlock({ code }: { code: string }) {
         let renderedSvg = await renderMermaid(code, width);
         let dimensions = parseMermaidSvgDimensions(renderedSvg);
         let nextLayout = resolveMermaidLayout(mermaidComplexity, isFullscreen, dimensions);
-
-        if (!isFullscreen && nextLayout.preserveScale) {
-          const wideWidth = getWideRerenderWidth(width);
-          if (wideWidth > width + 40) {
-            renderedSvg = await renderMermaid(code, wideWidth);
-            dimensions = parseMermaidSvgDimensions(renderedSvg);
-            nextLayout = resolveMermaidLayout(mermaidComplexity, isFullscreen, dimensions);
-          }
-        }
 
         if (!cancelled) {
           setLayout(nextLayout);
