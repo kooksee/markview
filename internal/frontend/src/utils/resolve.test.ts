@@ -32,6 +32,13 @@ describe("resolveLink", () => {
     });
   });
 
+  it("strips query/hash from markdown links", () => {
+    expect(resolveLink("readme.md?plain=1#title", "e")).toEqual({
+      type: "markdown",
+      hrefPath: "readme.md",
+    });
+  });
+
   it("returns markdown for nested path .md links", () => {
     expect(resolveLink("docs/guide.md", "c")).toEqual({
       type: "markdown",
@@ -58,6 +65,21 @@ describe("resolveLink", () => {
       type: "markdown",
       hrefPath: "page.mdx",
     });
+  });
+
+  it("returns markdown for uppercase extension", () => {
+    expect(resolveLink("docs/README.MD", "e")).toEqual({
+      type: "markdown",
+      hrefPath: "docs/README.MD",
+    });
+  });
+
+  it("returns external for mailto links", () => {
+    expect(resolveLink("mailto:test@example.com", "a")).toEqual({ type: "external" });
+  });
+
+  it("returns external for tel links", () => {
+    expect(resolveLink("tel:+10086", "a")).toEqual({ type: "external" });
   });
 
   it("returns file for links with non-md extensions", () => {

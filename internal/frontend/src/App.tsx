@@ -17,7 +17,7 @@ import { useFileDrop } from "./hooks/useFileDrop";
 import { useActiveHeading } from "./hooks/useActiveHeading";
 import { useScrollRestoration, SCROLL_SESSION_KEY } from "./hooks/useScrollRestoration";
 import type { Group, Status } from "./hooks/useApi";
-import { fetchGroups, fetchStatus, removeFile, removePattern, reorderFiles } from "./hooks/useApi";
+import { fetchGroups, fetchStatus, openRelativeFile, removeFile, removePattern, reorderFiles } from "./hooks/useApi";
 import { allFileIds, parseGroupFromPath, parseFileIdFromSearch, groupToPath, buildFileUrl } from "./utils/groups";
 import { buildTree, flattenTreeFiles, getAllFileIdsUnder, type TreeNode } from "./utils/buildTree";
 import { captureArticleForMergedPdf, exportMergedPdfFromSnapshots } from "./utils/pdfExport";
@@ -27,6 +27,21 @@ import { OutlineTreeView } from "./components/OutlineTreeView";
 
 const VIEWMODE_STORAGE_KEY = "mo-sidebar-viewmode";
 const WIDTH_STORAGE_KEY = "mo-layout-width";
+const PDF_OPEN_FILE_PARAM = "mo_open";
+const PDF_OPEN_FROM_PARAM = "mo_from";
+
+interface PendingPdfOpenRequest {
+  fromFileId: string;
+  relativePath: string;
+}
+
+function parsePendingPdfOpen(search: string): PendingPdfOpenRequest | null {
+  const params = new URLSearchParams(search);
+  const relativePath = params.get(PDF_OPEN_FILE_PARAM);
+  const fromFileId = params.get(PDF_OPEN_FROM_PARAM);
+  if (!relativePath || !fromFileId) return null;
+  return { fromFileId, relativePath };
+}
 
 export function App() {
   const [groups, setGroups] = useState<Group[]>([]);
@@ -76,6 +91,9 @@ export function App() {
     }
     return null;
   });
+  const [pendingPdfOpen, setPendingPdfOpen] = useState<PendingPdfOpenRequest | null>(() =>
+    parsePendingPdfOpen(window.location.search),
+  );
   const [scrollContainer, setScrollContainer] = useState<HTMLDivElement | null>(null);
 
   // Track previous values for render-time state adjustment
@@ -162,6 +180,7 @@ export function App() {
 
   // Sync URL with active group (and ?file= when a file is selected, e.g. after opening from graph)
   useEffect(() => {
+    if (pendingPdfOpen != null) return;
     const targetUrl = activeFileId
       ? buildFileUrl(activeGroup, activeFileId)
       : groupToPath(activeGroup);
@@ -169,14 +188,50 @@ export function App() {
     if (current !== targetUrl) {
       window.history.replaceState(null, "", targetUrl);
     }
-  }, [activeGroup, activeFileId]);
+  }, [activeGroup, activeFileId, pendingPdfOpen]);
 
   // Clear search params after consuming initial file ID (don't clear when a file is selected, e.g. from graph)
   useEffect(() => {
-    if (initialFileId === null && window.location.search && !activeFileId) {
+    if (pendingPdfOpen === null && initialFileId === null && window.location.search && !activeFileId) {
       window.history.replaceState(null, "", window.location.pathname);
     }
-  }, [initialFileId, activeFileId]);
+  }, [initialFileId, activeFileId, pendingPdfOpen]);
+
+  useEffect(() => {
+    if (!pendingPdfOpen) return;
+
+    let cancelled = false;
+    const resolveRelativeOpen = async () => {
+      const candidates = [
+        pendingPdfOpen.relativePath,
+        pendingPdfOpen.relativePath.startsWith("/")
+          ? pendingPdfOpen.relativePath.replace(/^\/+/, "")
+          : null,
+      ].filter((path): path is string => path != null && path.length > 0);
+
+      for (const candidate of candidates) {
+        try {
+          const entry = await openRelativeFile(pendingPdfOpen.fromFileId, candidate);
+          if (cancelled) return;
+          setShowGraph(false);
+          setActiveFileId(entry.id);
+          break;
+        } catch {
+          // try next candidate
+        }
+      }
+
+      if (!cancelled) {
+        setPendingPdfOpen(null);
+      }
+    };
+
+    void resolveRelativeOpen();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [pendingPdfOpen]);
 
   const activeFileName = useMemo(
     () =>
@@ -370,7 +425,11 @@ export function App() {
       for (const file of exportFiles) {
         setActiveFileId(file.id);
         const article = await waitForRenderedArticle(file.id);
-        const snapshot = await captureArticleForMergedPdf(article, file.name);
+        const snapshot = await captureArticleForMergedPdf(article, file.name, {
+          sourceFileId: file.id,
+          sourceGroup: activeGroup,
+          sourceFilePath: file.path,
+        });
         snapshots.push(snapshot);
       }
       const mergedFileName = `${activeGroup}-merged.pdf`;

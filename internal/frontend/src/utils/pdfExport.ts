@@ -1,11 +1,14 @@
 import { toJpeg } from "html-to-image";
 import jsPDF from "jspdf";
+import { groupToPath, parseGroupFromPath } from "./groups";
+import { resolveLink } from "./resolve";
 
 const PDF_MARGIN_MM = 15;
 const PDF_PAGE_WIDTH_MM = 210;
 
 interface CapturedLinkRect {
-    url: string;
+    url?: string;
+    targetSourcePath?: string;
     xPx: number;
     yPx: number;
     widthPx: number;
@@ -18,8 +21,15 @@ interface CapturedHeading {
     topPx: number;
 }
 
+export interface PdfCaptureOptions {
+    sourceFileId?: string;
+    sourceGroup?: string;
+    sourceFilePath?: string;
+}
+
 export interface PdfArticleSnapshot {
     fileName: string;
+    sourceFilePath?: string;
     imageDataUrl: string;
     imageWidthPx: number;
     imageHeightPx: number;
@@ -38,6 +48,148 @@ function toAbsoluteUrl(href: string): string {
     } catch {
         return href;
     }
+}
+
+function extractHashFragment(href: string): string {
+    const idx = href.indexOf("#");
+    return idx >= 0 ? href.slice(idx) : "";
+}
+
+function stripHashAndQuery(href: string): string {
+    const hashIndex = href.indexOf("#");
+    const withoutHash = hashIndex >= 0 ? href.slice(0, hashIndex) : href;
+    const queryIndex = withoutHash.indexOf("?");
+    return queryIndex >= 0 ? withoutHash.slice(0, queryIndex) : withoutHash;
+}
+
+function normalizePath(path: string): string {
+    const normalized = path.replace(/\\+/g, "/").replace(/\/+/g, "/");
+    if (/^[A-Za-z]:\//.test(normalized)) {
+        return normalized[0].toUpperCase() + normalized.slice(1);
+    }
+    return normalized;
+}
+
+function splitRootAndSegments(path: string): { root: string; segments: string[] } {
+    const normalized = normalizePath(path);
+
+    if (/^[A-Za-z]:\//.test(normalized)) {
+        const root = normalized.slice(0, 3);
+        const rest = normalized.slice(3);
+        return { root, segments: rest.split("/").filter((segment) => segment.length > 0) };
+    }
+
+    if (normalized.startsWith("/")) {
+        return { root: "/", segments: normalized.slice(1).split("/").filter((segment) => segment.length > 0) };
+    }
+
+    return { root: "", segments: normalized.split("/").filter((segment) => segment.length > 0) };
+}
+
+function joinRootAndSegments(root: string, segments: string[]): string {
+    if (!root) {
+        return segments.join("/");
+    }
+    return `${root}${segments.join("/")}`;
+}
+
+function resolveRelativeFilePath(sourceFilePath: string | undefined, hrefPath: string): string | null {
+    if (!sourceFilePath) return null;
+
+    const cleanedHrefPath = stripHashAndQuery(hrefPath).trim();
+    if (!cleanedHrefPath) return null;
+    if (/^[A-Za-z][A-Za-z\d+.-]*:/.test(cleanedHrefPath)) return null;
+
+    const source = splitRootAndSegments(sourceFilePath);
+    if (source.segments.length === 0) return null;
+
+    const sourceDirSegments = source.segments.slice(0, -1);
+    const hrefSegments = normalizePath(cleanedHrefPath).split("/").filter((segment) => segment.length > 0);
+
+    if (cleanedHrefPath.startsWith("/")) {
+        if (source.root === "/") {
+            return normalizePath(cleanedHrefPath);
+        }
+        return null;
+    }
+
+    const resolvedSegments = [...sourceDirSegments];
+    for (const segment of hrefSegments) {
+        if (segment === ".") continue;
+        if (segment === "..") {
+            if (resolvedSegments.length > 0) {
+                resolvedSegments.pop();
+            }
+            continue;
+        }
+        resolvedSegments.push(segment);
+    }
+
+    return joinRootAndSegments(source.root, resolvedSegments);
+}
+
+interface ResolvedPdfLink {
+    url?: string;
+    targetSourcePath?: string;
+}
+
+async function resolvePdfLinkUrl(
+    href: string,
+    sourceFileId: string | undefined,
+    sourceGroup: string | undefined,
+    sourceFilePath: string | undefined,
+    cache: Map<string, Promise<ResolvedPdfLink | null>>,
+): Promise<ResolvedPdfLink | null> {
+    if (!href) return null;
+
+    if (href.startsWith("#")) {
+        return {
+            targetSourcePath: sourceFilePath,
+        };
+    }
+
+    const cacheKey = `${sourceFileId ?? ""}|${sourceGroup ?? ""}|${href}`;
+    const cached = cache.get(cacheKey);
+    if (cached) {
+        return cached;
+    }
+
+    const task = (async (): Promise<ResolvedPdfLink | null> => {
+        if (!sourceFileId) {
+            return { url: toAbsoluteUrl(href) };
+        }
+
+        const buildRuntimeOpenUrl = (relativePath: string): string => {
+            const groupName = sourceGroup ?? parseGroupFromPath(window.location.pathname);
+            const params = new URLSearchParams();
+            params.set("mo_from", sourceFileId);
+            params.set("mo_open", relativePath);
+            const hash = extractHashFragment(href);
+            return toAbsoluteUrl(`${groupToPath(groupName)}?${params.toString()}${hash}`);
+        };
+
+        const resolved = resolveLink(href, sourceFileId);
+        switch (resolved.type) {
+            case "hash":
+                return null;
+            case "external":
+                return { url: href };
+            case "file":
+                return { url: toAbsoluteUrl(resolved.rawUrl) };
+            case "passthrough": {
+                return { url: buildRuntimeOpenUrl(stripHashAndQuery(href)) };
+            }
+            case "markdown": {
+                return {
+                    url: buildRuntimeOpenUrl(resolved.hrefPath),
+                    targetSourcePath: resolveRelativeFilePath(sourceFilePath, resolved.hrefPath) ?? undefined,
+                };
+            }
+        }
+    })();
+
+    cache.set(cacheKey, task);
+    return task;
 }
 
 async function waitForRenderableResources(root: HTMLElement): Promise<void> {
@@ -199,18 +351,27 @@ function buildSnapshotHeadings(article: HTMLElement, articleRect: DOMRect): Capt
     return headings;
 }
 
-function buildSnapshotLinks(article: HTMLElement, articleRect: DOMRect): CapturedLinkRect[] {
+async function buildSnapshotLinks(
+    article: HTMLElement,
+    articleRect: DOMRect,
+    sourceFileId: string | undefined,
+    sourceGroup: string | undefined,
+    sourceFilePath: string | undefined,
+): Promise<CapturedLinkRect[]> {
     const links: CapturedLinkRect[] = [];
+    const linkCache = new Map<string, Promise<ResolvedPdfLink | null>>();
     const linkEls = article.querySelectorAll<HTMLAnchorElement>("a[href]");
     for (const a of linkEls) {
         const href = a.getAttribute("href");
-        if (!href || href.startsWith("#")) continue;
-        const absUrl = toAbsoluteUrl(href);
+        if (!href) continue;
+        const resolvedLink = await resolvePdfLinkUrl(href, sourceFileId, sourceGroup, sourceFilePath, linkCache);
+        if (!resolvedLink) continue;
         const rects = a.getClientRects();
         for (const rect of rects) {
             if (rect.width <= 0 || rect.height <= 0) continue;
             links.push({
-                url: absUrl,
+                url: resolvedLink.url,
+                targetSourcePath: resolvedLink.targetSourcePath,
                 xPx: rect.left - articleRect.left,
                 yPx: rect.top - articleRect.top,
                 widthPx: rect.width,
@@ -221,11 +382,18 @@ function buildSnapshotLinks(article: HTMLElement, articleRect: DOMRect): Capture
     return links;
 }
 
-async function captureArticleSnapshot(article: HTMLElement, fileName: string): Promise<PdfArticleSnapshot> {
+async function captureArticleSnapshot(
+    article: HTMLElement,
+    fileName: string,
+    options: PdfCaptureOptions = {},
+): Promise<PdfArticleSnapshot> {
     await waitForRenderableResources(article);
 
     const articleRect = article.getBoundingClientRect();
     const fixedWidthPx = Math.max(1, Math.round(articleRect.width));
+    const sourceFileId = options.sourceFileId ?? article.dataset.fileId;
+    const sourceGroup = options.sourceGroup ?? parseGroupFromPath(window.location.pathname);
+    const sourceFilePath = options.sourceFilePath;
 
     const imageDataUrl = await toJpeg(article, {
         quality: 0.92,
@@ -249,12 +417,13 @@ async function captureArticleSnapshot(article: HTMLElement, fileName: string): P
 
     return {
         fileName,
+        sourceFilePath,
         imageDataUrl,
         imageWidthPx: img.width,
         imageHeightPx: img.height,
         articleWidthPx: articleRect.width,
         articleHeightPx: articleRect.height,
-        links: buildSnapshotLinks(article, articleRect),
+        links: await buildSnapshotLinks(article, articleRect, sourceFileId, sourceGroup, sourceFilePath),
         headings: buildSnapshotHeadings(article, articleRect),
     };
 }
@@ -285,6 +454,7 @@ function getPageMetrics(snapshot: PdfArticleSnapshot): {
 function drawSnapshotOnCurrentPage(
     pdf: jsPDF,
     snapshot: PdfArticleSnapshot,
+    pageBySourcePath: Map<string, number>,
 ): { scaleX: number; scaleY: number } {
     const { contentWidthMm, contentHeightMm, scaleX, scaleY } = getPageMetrics(snapshot);
 
@@ -296,7 +466,25 @@ function drawSnapshotOnCurrentPage(
         const w = link.widthPx * scaleX;
         const h = link.heightPx * scaleY;
         if (w > 0 && h > 0) {
-            pdf.link(x, y, w, h, { url: link.url });
+            const targetPage = link.targetSourcePath
+                ? pageBySourcePath.get(normalizePath(link.targetSourcePath))
+                : undefined;
+
+            if (targetPage != null) {
+                try {
+                    pdf.link(x, y, w, h, {
+                        pageNumber: targetPage,
+                        magFactor: "Fit",
+                    });
+                } catch {
+                    // ignore invalid link target options and keep generating PDF
+                }
+                continue;
+            }
+
+            if (link.url) {
+                pdf.link(x, y, w, h, { url: link.url });
+            }
         }
     }
 
@@ -349,19 +537,31 @@ function createPdfDocument(initialSnapshot: PdfArticleSnapshot, filename: string
     return pdf;
 }
 
-async function exportAsSinglePagePdf(article: HTMLElement, filename: string): Promise<void> {
-    const snapshot = await captureArticleSnapshot(article, filename);
+async function exportAsSinglePagePdf(
+    article: HTMLElement,
+    filename: string,
+    options: PdfCaptureOptions = {},
+): Promise<void> {
+    const snapshot = await captureArticleSnapshot(article, filename, options);
     const pdf = createPdfDocument(snapshot, filename);
+    const pageBySourcePath = new Map<string, number>();
+    if (snapshot.sourceFilePath) {
+        pageBySourcePath.set(normalizePath(snapshot.sourceFilePath), 1);
+    }
 
-    const { scaleY } = drawSnapshotOnCurrentPage(pdf, snapshot);
+    const { scaleY } = drawSnapshotOnCurrentPage(pdf, snapshot, pageBySourcePath);
     const { pageHeightMm } = getPageMetrics(snapshot);
     addHeadingsToOutline(pdf, snapshot.headings, 1, pageHeightMm, scaleY, null);
 
     pdf.save(filename);
 }
 
-export async function captureArticleForMergedPdf(article: HTMLElement, fileName: string): Promise<PdfArticleSnapshot> {
-    return captureArticleSnapshot(article, fileName);
+export async function captureArticleForMergedPdf(
+    article: HTMLElement,
+    fileName: string,
+    options: PdfCaptureOptions = {},
+): Promise<PdfArticleSnapshot> {
+    return captureArticleSnapshot(article, fileName, options);
 }
 
 export async function exportMergedPdfFromSnapshots(
@@ -374,6 +574,14 @@ export async function exportMergedPdfFromSnapshots(
 
     const filename = toPdfFilename(outputFileName);
     const pdf = createPdfDocument(snapshots[0], filename);
+    const pageBySourcePath = new Map<string, number>();
+
+    for (let i = 0; i < snapshots.length; i++) {
+        const sourcePath = snapshots[i].sourceFilePath;
+        if (sourcePath) {
+            pageBySourcePath.set(normalizePath(sourcePath), i + 1);
+        }
+    }
 
     for (let i = 0; i < snapshots.length; i++) {
         const snapshot = snapshots[i];
@@ -385,7 +593,7 @@ export async function exportMergedPdfFromSnapshots(
             pdf.setPage(pageNumber);
         }
 
-        const { scaleY } = drawSnapshotOnCurrentPage(pdf, snapshot);
+        const { scaleY } = drawSnapshotOnCurrentPage(pdf, snapshot, pageBySourcePath);
 
         const fileOutlineTitle = stripPdfLikeExtension(snapshot.fileName) || `Document ${pageNumber}`;
         const fileRootItem = pdf.outline.add(null, fileOutlineTitle, {
@@ -468,10 +676,14 @@ export function toPdfFilename(fileName: string): string {
     return `${fileName.replace(/\.(md|mdx)$/i, "")}.pdf`;
 }
 
-export async function exportArticleAsPdf(article: HTMLElement, fileName: string): Promise<void> {
+export async function exportArticleAsPdf(
+    article: HTMLElement,
+    fileName: string,
+    options: PdfCaptureOptions = {},
+): Promise<void> {
     const filename = toPdfFilename(fileName);
     try {
-        await exportAsSinglePagePdf(article, filename);
+        await exportAsSinglePagePdf(article, filename, options);
     } catch {
         openPrintFallback(article, filename);
     }

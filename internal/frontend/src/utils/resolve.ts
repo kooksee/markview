@@ -5,15 +5,22 @@ export type LinkResolution =
   | { type: "file"; rawUrl: string }
   | { type: "passthrough" };
 
+function stripHashAndQuery(href: string): string {
+  const hashIndex = href.indexOf("#");
+  const withoutHash = hashIndex >= 0 ? href.slice(0, hashIndex) : href;
+  const queryIndex = withoutHash.indexOf("?");
+  return queryIndex >= 0 ? withoutHash.slice(0, queryIndex) : withoutHash;
+}
+
 export function resolveLink(href: string | undefined, fileId: string): LinkResolution {
-  if (!href || href.startsWith("http://") || href.startsWith("https://")) {
+  if (!href || /^(https?:\/\/|mailto:|tel:)/i.test(href)) {
     return { type: "external" };
   }
   if (href.startsWith("#")) {
     return { type: "hash" };
   }
-  const hrefPath = href.split("#")[0];
-  if (hrefPath.endsWith(".md") || hrefPath.endsWith(".mdx")) {
+  const hrefPath = stripHashAndQuery(href);
+  if (/\.mdx?$/i.test(hrefPath)) {
     return { type: "markdown", hrefPath };
   }
   const basename = hrefPath.split("/").pop() || "";
