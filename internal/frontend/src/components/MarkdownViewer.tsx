@@ -142,7 +142,7 @@ function resolveMermaidLayout(
   const defaultFit = shouldFitMermaidToWidth(complexity, false);
 
   if (!dimensions) {
-    return { fitToWidth: defaultFit, preserveScale: false, constrainHeight: false };
+    return { fitToWidth: defaultFit, preserveScale: false, constrainHeight: true };
   }
 
   const ratio = dimensions.width / dimensions.height;
@@ -150,14 +150,14 @@ function resolveMermaidLayout(
   const isTall = dimensions.height / dimensions.width >= MERMAID_TALL_RATIO_THRESHOLD;
 
   if (isWide) {
-    return { fitToWidth: true, preserveScale: false, constrainHeight: false };
+    return { fitToWidth: true, preserveScale: false, constrainHeight: true };
   }
 
   if (isTall) {
     return { fitToWidth: false, preserveScale: false, constrainHeight: true };
   }
 
-  return { fitToWidth: defaultFit, preserveScale: false, constrainHeight: false };
+  return { fitToWidth: defaultFit, preserveScale: false, constrainHeight: true };
 }
 
 function cleanupMermaidErrors() {

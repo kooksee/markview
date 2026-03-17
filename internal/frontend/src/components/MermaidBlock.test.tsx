@@ -84,6 +84,9 @@ describe("MermaidBlock", () => {
       expect(screen.getByTitle("Copy image")).toBeInTheDocument();
     });
     expect(screen.getByTitle("Fullscreen")).toBeInTheDocument();
+
+    const block = document.querySelector(".mermaid-block");
+    expect(block?.className).toContain("mermaid-block--constrain-height");
   });
 
   it("keeps small diagram svg near natural width and constrained by max-width", async () => {

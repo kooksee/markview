@@ -77,7 +77,9 @@ body,
 }
 
 .markdown-body .mermaid-block.mermaid-block--constrain-height .mermaid-render {
-  max-height: min(72vh, 900px);
+  max-height: min(78vh, 960px);
+  max-height: min(78dvh, 960px);
+  overflow: auto;
 }
 
 .markdown-body .mermaid-block .mermaid-render {
