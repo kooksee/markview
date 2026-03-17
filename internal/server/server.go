@@ -34,11 +34,18 @@ type FileEntry struct {
 	content  string // in-memory content for uploaded files
 }
 
+const headFileSizeLimit = 8192
+
 // extractTitle returns the text of the first Markdown heading (ATX-style)
 // found in content, or "" if none is found.
 func extractTitle(content string) string {
 	inFence := false
 	for line := range strings.SplitSeq(content, "\n") {
+		// CommonMark: lines with 4+ leading spaces are indented code blocks.
+		indent := len(line) - len(strings.TrimLeft(line, " \t"))
+		if indent >= 4 {
+			continue
+		}
 		trimmed := strings.TrimSpace(line)
 		if strings.HasPrefix(trimmed, "```") || strings.HasPrefix(trimmed, "~~~") {
 			inFence = !inFence
@@ -63,18 +70,19 @@ func extractTitle(content string) string {
 }
 
 // extractTitleFromFile reads the first 8KB of the file and extracts the title.
-func extractTitleFromFile(path string) string {
+// Returns ("", false) on read error so callers can skip updating stored titles.
+func extractTitleFromFile(path string) (string, bool) {
 	f, err := os.Open(path) //nolint:gosec
 	if err != nil {
-		return ""
+		return "", false
 	}
 	defer f.Close()
-	var buf [8192]byte
+	var buf [headFileSizeLimit]byte
 	n, err := f.Read(buf[:])
 	if err != nil && !errors.Is(err, io.EOF) {
-		return ""
+		return "", false
 	}
-	return extractTitle(string(buf[:n]))
+	return extractTitle(string(buf[:n])), true
 }
 
 // FileID generates a deterministic file ID from an absolute path.
@@ -272,7 +280,11 @@ func (s *State) AddUploadedFile(name, content, groupName string) *FileEntry {
 		s.groups[groupName] = g
 	}
 
-	title := extractTitle(content)
+	head := content
+	if len(head) > headFileSizeLimit {
+		head = head[:headFileSizeLimit]
+	}
+	title := extractTitle(head)
 
 	entry := &FileEntry{
 		Name:     name,
@@ -316,8 +328,13 @@ func (s *State) FindFile(id string) *FileEntry {
 
 // UpdateTitleByPath re-extracts titles for all entries matching absPath.
 // File I/O happens outside the mutex lock. Returns true if any title changed.
+// If the file cannot be read (e.g. during an atomic save rename), the stored
+// title is left unchanged to avoid transient flicker.
 func (s *State) UpdateTitleByPath(absPath string) bool {
-	newTitle := extractTitleFromFile(absPath)
+	newTitle, ok := extractTitleFromFile(absPath)
+	if !ok {
+		return false
+	}
 
 	changed := false
 	s.mu.Lock()

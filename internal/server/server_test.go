@@ -1579,7 +1579,11 @@ func TestExtractTitleFromFile(t *testing.T) {
 	t.Run("reads title from file", func(t *testing.T) {
 		f := filepath.Join(dir, "with-title.md")
 		os.WriteFile(f, []byte("# File Title\nSome content"), 0o600) //nolint:errcheck
-		if got := extractTitleFromFile(f); got != "File Title" {
+		got, ok := extractTitleFromFile(f)
+		if !ok {
+			t.Fatal("expected ok=true")
+		}
+		if got != "File Title" {
 			t.Errorf("got %q, want %q", got, "File Title")
 		}
 	})
@@ -1587,14 +1591,19 @@ func TestExtractTitleFromFile(t *testing.T) {
 	t.Run("returns empty for file without heading", func(t *testing.T) {
 		f := filepath.Join(dir, "no-title.md")
 		os.WriteFile(f, []byte("No heading here"), 0o600) //nolint:errcheck
-		if got := extractTitleFromFile(f); got != "" {
+		got, ok := extractTitleFromFile(f)
+		if !ok {
+			t.Fatal("expected ok=true")
+		}
+		if got != "" {
 			t.Errorf("got %q, want empty", got)
 		}
 	})
 
-	t.Run("returns empty for nonexistent file", func(t *testing.T) {
-		if got := extractTitleFromFile(filepath.Join(dir, "nope.md")); got != "" {
-			t.Errorf("got %q, want empty", got)
+	t.Run("returns ok=false for nonexistent file", func(t *testing.T) {
+		_, ok := extractTitleFromFile(filepath.Join(dir, "nope.md"))
+		if ok {
+			t.Error("expected ok=false for nonexistent file")
 		}
 	})
 }
