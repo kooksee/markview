@@ -9,6 +9,7 @@ interface FileContextMenuProps {
   otherGroups: Group[];
   onToggle: (id: number) => void;
   onOpenInNewTab: (id: number) => void;
+  onCopyPath: (path: string) => void;
   onMoveToGroup: (id: number, group: string) => void;
   onRemove: (id: number) => void;
   menuRef: React.RefObject<HTMLDivElement | null>;
@@ -20,6 +21,7 @@ export function FileContextMenu({
   otherGroups,
   onToggle,
   onOpenInNewTab,
+  onCopyPath,
   onMoveToGroup,
   onRemove,
   menuRef,
@@ -54,10 +56,7 @@ export function FileContextMenu({
           </button>
           <button
             className={MENU_ITEM_CLASS}
-            onClick={() => {
-              navigator.clipboard.writeText(file.path);
-              onToggle(file.id);
-            }}
+            onClick={() => onCopyPath(file.path)}
           >
             <svg className="size-4" viewBox="0 0 16 16" fill="currentColor">
               <path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 0 1 0 1.5h-1.5a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-1.5a.75.75 0 0 1 1.5 0v1.5A1.75 1.75 0 0 1 9.25 16h-7.5A1.75 1.75 0 0 1 0 14.25Z" />

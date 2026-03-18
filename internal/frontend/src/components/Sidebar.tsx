@@ -43,6 +43,7 @@ interface SortableFileItemProps {
   onFileSelect: (id: number) => void;
   onMenuToggle: (id: number) => void;
   onOpenInNewTab: (id: number) => void;
+  onCopyPath: (path: string) => void;
   onMoveToGroup: (id: number, group: string) => void;
   onRemove: (id: number) => void;
   menuRef: React.RefObject<HTMLDivElement | null>;
@@ -56,6 +57,7 @@ function SortableFileItem({
   onFileSelect,
   onMenuToggle,
   onOpenInNewTab,
+  onCopyPath,
   onMoveToGroup,
   onRemove,
   menuRef,
@@ -99,6 +101,7 @@ function SortableFileItem({
         otherGroups={otherGroups}
         onToggle={onMenuToggle}
         onOpenInNewTab={onOpenInNewTab}
+        onCopyPath={onCopyPath}
         onMoveToGroup={onMoveToGroup}
         onRemove={onRemove}
         menuRef={menuRef}
@@ -225,6 +228,11 @@ export function Sidebar({
     [],
   );
 
+  const handleCopyPath = useCallback((path: string) => {
+    setMenuOpenId(null);
+    navigator.clipboard.writeText(path);
+  }, []);
+
   const handleRemove = useCallback((id: number) => {
     setMenuOpenId(null);
     removeFile(id);
@@ -250,6 +258,7 @@ export function Sidebar({
             onFileSelect={onFileSelect}
             onMenuToggle={handleMenuToggle}
             onOpenInNewTab={handleOpenInNewTab}
+            onCopyPath={handleCopyPath}
             onMoveToGroup={handleMoveToGroup}
             onRemove={handleRemove}
             menuRef={menuRef}
@@ -274,6 +283,7 @@ export function Sidebar({
                   onFileSelect={onFileSelect}
                   onMenuToggle={handleMenuToggle}
                   onOpenInNewTab={handleOpenInNewTab}
+                  onCopyPath={handleCopyPath}
                   onMoveToGroup={handleMoveToGroup}
                   onRemove={handleRemove}
                   menuRef={menuRef}
