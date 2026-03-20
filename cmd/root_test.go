@@ -3,6 +3,8 @@ package cmd
 import (
 	"bytes"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -528,6 +530,64 @@ func TestEmitServeOutput(t *testing.T) {
 			t.Errorf("got Name %q, want %q", output.Files[0].Name, "upload.md")
 		}
 	})
+}
+
+func TestWaitForServerDown(t *testing.T) {
+	t.Run("returns nil when server stops", func(t *testing.T) {
+		callCount := 0
+		srv := newFakeMoServer(t, func(w http.ResponseWriter, r *http.Request) {
+			callCount++
+			if callCount >= 3 {
+				// Stop responding after a few probes
+				hj, ok := w.(http.Hijacker)
+				if ok {
+					conn, _, _ := hj.Hijack()
+					conn.Close()
+					return
+				}
+				http.Error(w, "gone", http.StatusInternalServerError)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]any{"version": "test", "pid": 1, "groups": []any{}}) //nolint:errcheck
+		})
+
+		addr := strings.TrimPrefix(srv.URL, "http://")
+		err := waitForServerDown(addr)
+		if err != nil {
+			t.Fatalf("expected nil error, got %v", err)
+		}
+	})
+
+	t.Run("returns error on timeout", func(t *testing.T) {
+		srv := newFakeMoServer(t, func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]any{"version": "test", "pid": 1, "groups": []any{}}) //nolint:errcheck
+		})
+
+		addr := strings.TrimPrefix(srv.URL, "http://")
+		err := waitForServerDown(addr)
+		if err == nil {
+			t.Fatal("expected timeout error, got nil")
+		}
+		if !strings.Contains(err.Error(), "did not shut down") {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+}
+
+// newFakeMoServer creates an httptest server that handles /_/api/status with
+// the provided handler, and /_/api/shutdown with a 202 response.
+func newFakeMoServer(t *testing.T, statusHandler http.HandlerFunc) *httptest.Server {
+	t.Helper()
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /_/api/status", statusHandler)
+	mux.HandleFunc("POST /_/api/shutdown", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusAccepted)
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+	return srv
 }
 
 func TestIsLoopbackBind(t *testing.T) {

@@ -794,15 +794,16 @@ func probeServer(addr string, timeout ...time.Duration) (*probeResult, error) {
 // waitForServerDown polls until the server on addr stops responding.
 func waitForServerDown(addr string) error {
 	const (
-		interval = 100 * time.Millisecond
-		timeout  = 5 * time.Second
+		pollInterval = 100 * time.Millisecond
+		probeTimeout = 500 * time.Millisecond
+		timeout      = 5 * time.Second
 	)
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
-		if _, err := probeServer(addr, interval); err != nil {
+		if _, err := probeServer(addr, probeTimeout); err != nil {
 			return nil
 		}
-		time.Sleep(interval)
+		time.Sleep(pollInterval)
 	}
 	return fmt.Errorf("server on %s did not shut down within %s", addr, timeout)
 }
@@ -1227,6 +1228,9 @@ func spawnNewProcess(addr string, restoreFile string) (*os.Process, error) {
 	args := []string{"--port", p, "--bind", h, "--no-open", "--foreground"}
 	if restoreFile != "" {
 		args = append(args, "--restore", restoreFile)
+	}
+	if dangerouslyAllowRemoteAccess {
+		args = append(args, "--dangerously-allow-remote-access")
 	}
 	cmd := exec.Command(binPath, args...) //nolint:gosec
 	setSysProcAttr(cmd)
