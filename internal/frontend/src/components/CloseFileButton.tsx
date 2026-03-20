@@ -1,12 +1,12 @@
-interface RemoveButtonProps {
-  onRemove: () => void;
+interface CloseFileButtonProps {
+  onClose: () => void;
 }
 
-export function RemoveButton({ onRemove }: RemoveButtonProps) {
+export function CloseFileButton({ onClose }: CloseFileButtonProps) {
   return (
     <button
       className="flex items-center justify-center bg-transparent border border-gh-border rounded-md p-1.5 text-gh-text-secondary cursor-pointer transition-colors duration-150 hover:bg-gh-bg-hover"
-      onClick={onRemove}
+      onClick={onClose}
       title="Close file"
     >
       <svg className="size-5" viewBox="0 0 16 16" fill="currentColor">

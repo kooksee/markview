@@ -14,7 +14,7 @@ import { fetchFileContent, openRelativeFile } from "../hooks/useApi";
 import { RawToggle } from "./RawToggle";
 import { TocToggle } from "./TocToggle";
 import { CopyButton } from "./CopyButton";
-import { RemoveButton } from "./RemoveButton";
+import { CloseFileButton } from "./CloseFileButton";
 import { resolveLink, resolveImageSrc, extractLanguage } from "../utils/resolve";
 import { parseFrontmatter } from "../utils/frontmatter";
 import { stripMdxSyntax } from "../utils/mdx";
@@ -597,7 +597,7 @@ export function MarkdownViewer({
         {isMarkdown && <TocToggle isTocOpen={isTocOpen} onToggle={onTocToggle} />}
         {isMarkdown && <RawToggle isRaw={isRawView} onToggle={() => setIsRawView((v) => !v)} />}
         <CopyButton content={content} />
-        <RemoveButton onRemove={onRemoveFile} />
+        <CloseFileButton onClose={onRemoveFile} />
       </div>
     </div>
   );
