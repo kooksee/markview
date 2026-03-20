@@ -1,5 +1,12 @@
 # Changelog
 
+## [v0.20.0](https://github.com/k1LoW/mo/compare/v0.19.0...v0.20.0) - 2026-03-20
+### New Features 🎉
+- feat: add --close option to remove files from CLI by @haru0017 in https://github.com/k1LoW/mo/pull/126
+### Dependency Updates ⬆️
+- chore(deps): bump the dependencies group with 2 updates by @dependabot[bot] in https://github.com/k1LoW/mo/pull/127
+- chore(deps): bump the dependencies group in /internal/frontend with 8 updates by @dependabot[bot] in https://github.com/k1LoW/mo/pull/128
+
 ## [v0.19.0](https://github.com/k1LoW/mo/compare/v0.18.5...v0.19.0) - 2026-03-18
 ### New Features 🎉
 - feat: add title toggle button for heading titles by @k1LoW in https://github.com/k1LoW/mo/pull/121
