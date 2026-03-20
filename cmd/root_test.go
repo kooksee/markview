@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/k1LoW/mo/internal/server"
 )
@@ -533,26 +534,32 @@ func TestEmitServeOutput(t *testing.T) {
 }
 
 func TestWaitForServerDown(t *testing.T) {
-	t.Run("returns nil when server stops", func(t *testing.T) {
+	// Use a short timeout for tests.
+	orig := waitForServerDownTimeout
+	waitForServerDownTimeout = 500 * time.Millisecond
+	t.Cleanup(func() { waitForServerDownTimeout = orig })
+
+	t.Run("returns nil when server actually stops", func(t *testing.T) {
 		callCount := 0
-		srv := newFakeMoServer(t, func(w http.ResponseWriter, r *http.Request) {
+		stopCh := make(chan struct{}, 1)
+
+		var srv *httptest.Server
+		srv = newFakeMoServer(t, func(w http.ResponseWriter, r *http.Request) {
 			callCount++
 			if callCount >= 3 {
-				// Stop responding after a few probes by closing the connection.
-				hj, ok := w.(http.Hijacker)
-				if ok {
-					conn, _, err := hj.Hijack()
-					if err == nil {
-						conn.Close()
-						return
-					}
+				select {
+				case stopCh <- struct{}{}:
+				default:
 				}
-				http.Error(w, "gone", http.StatusInternalServerError)
-				return
 			}
 			w.Header().Set("Content-Type", "application/json")
 			json.NewEncoder(w).Encode(map[string]any{"version": "test", "pid": 1, "groups": []any{}}) //nolint:errcheck
 		})
+
+		go func() {
+			<-stopCh
+			srv.Close()
+		}()
 
 		addr := strings.TrimPrefix(srv.URL, "http://")
 		err := waitForServerDown(addr)

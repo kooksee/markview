@@ -791,21 +791,24 @@ func probeServer(addr string, timeout ...time.Duration) (*probeResult, error) {
 	return &probeResult{client: client, groups: groups}, nil
 }
 
+// waitForServerDownTimeout is the maximum time to wait for a server to stop.
+// Overridable in tests.
+var waitForServerDownTimeout = 5 * time.Second
+
 // waitForServerDown polls until the server on addr stops responding.
 func waitForServerDown(addr string) error {
 	const (
 		pollInterval = 100 * time.Millisecond
 		probeTimeout = 500 * time.Millisecond
-		timeout      = 5 * time.Second
 	)
-	deadline := time.Now().Add(timeout)
+	deadline := time.Now().Add(waitForServerDownTimeout)
 	for time.Now().Before(deadline) {
 		if _, err := probeServer(addr, probeTimeout); err != nil {
 			return nil
 		}
 		time.Sleep(pollInterval)
 	}
-	return fmt.Errorf("server on %s did not shut down within %s", addr, timeout)
+	return fmt.Errorf("server on %s did not shut down within %s", addr, waitForServerDownTimeout)
 }
 
 func doShutdown(addr string) error {
