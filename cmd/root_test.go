@@ -628,7 +628,7 @@ func TestIsLoopbackBind(t *testing.T) {
 
 func writeTestFile(t *testing.T, path string, content []byte) {
 	t.Helper()
-	if err := os.WriteFile(path, content, 0o644); err != nil {
+	if err := os.WriteFile(path, content, 0o600); err != nil {
 		t.Fatalf("failed to write test file %s: %v", path, err)
 	}
 }
