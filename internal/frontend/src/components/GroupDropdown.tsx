@@ -118,7 +118,11 @@ export function GroupDropdown({ groups, activeGroup, onGroupChange }: GroupDropd
                       strokeWidth={2}
                       viewBox="0 0 24 24"
                     >
-                      <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        d="m4.5 12.75 6 6 9-13.5"
+                      />
                     </svg>
                   ) : (
                     <span className="inline-block size-3.5 shrink-0" />
