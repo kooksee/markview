@@ -72,7 +72,7 @@ export function TocPanel({ headings, activeHeadingId, onHeadingClick }: TocPanel
 
   return (
     <aside
-      className="relative shrink-0 bg-gh-bg-sidebar border-l border-gh-border flex flex-col overflow-y-auto"
+      className="relative shrink-0 bg-gh-bg-sidebar border-l border-gh-border flex flex-col overflow-y-auto overscroll-contain"
       style={{ width }}
     >
       {/* Resize handle */}
