@@ -46,6 +46,8 @@ interface MarkdownViewerProps {
   onRemoveFile: () => void;
   isWide: boolean;
   onZoom?: (content: ZoomContent) => void;
+  scrollToHeading?: string | null;
+  onScrolledToHeading?: () => void;
 }
 
 function getMermaidTheme(): "dark" | "default" {
@@ -440,6 +442,8 @@ export function MarkdownViewer({
   onRemoveFile,
   isWide,
   onZoom,
+  scrollToHeading,
+  onScrolledToHeading,
 }: MarkdownViewerProps) {
   const [content, setContent] = useState("");
   const [loading, setLoading] = useState(true);
@@ -631,6 +635,19 @@ export function MarkdownViewer({
       onContentRenderedRef.current?.();
     }
   }, [loading, renderedContent]);
+
+  useLayoutEffect(() => {
+    if (loading || !scrollToHeading || !articleRef.current) {
+      return;
+    }
+
+    const headings = articleRef.current.querySelectorAll("h1, h2, h3, h4, h5, h6");
+    const target = Array.from(headings).find(
+      (el) => (el.textContent ?? "").trim() === scrollToHeading,
+    );
+    target?.scrollIntoView({ behavior: "smooth", block: "start" });
+    onScrolledToHeading?.();
+  }, [loading, renderedContent, scrollToHeading, onScrolledToHeading]);
 
   if (loading) {
     return (

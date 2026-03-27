@@ -14,7 +14,7 @@ import {
   arrayMove,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import type { FileEntry, Group } from "../hooks/useApi";
+import type { FileEntry, Group, SearchResult } from "../hooks/useApi";
 import { removeFile, moveFile } from "../hooks/useApi";
 import { buildFileUrl } from "../utils/groups";
 import type { ViewMode } from "./ViewModeToggle";
@@ -34,6 +34,27 @@ function getInitialWidth(): number {
     if (n >= MIN_WIDTH && n <= MAX_WIDTH) return n;
   }
   return DEFAULT_WIDTH;
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function renderHighlightedText(text: string, query: string) {
+  if (!query) {
+    return text;
+  }
+
+  const parts = text.split(new RegExp(`(${escapeRegExp(query)})`, "gi"));
+  return parts.map((part, index) =>
+    part.toLowerCase() === query.toLowerCase() ? (
+      <mark key={`${part}:${index}`} className="bg-transparent p-0 font-semibold text-gh-text">
+        {part}
+      </mark>
+    ) : (
+      <span key={`${part}:${index}`}>{part}</span>
+    ),
+  );
 }
 
 interface FileItemProps {
@@ -127,6 +148,9 @@ interface SidebarProps {
   showTitle: boolean;
   searchQuery: string | null;
   onSearchQueryChange: (query: string | null) => void;
+  searchResults?: SearchResult[];
+  searchLoading?: boolean;
+  onSearchResultSelect?: (fileId: string, heading?: string) => void;
 }
 
 export function Sidebar({
@@ -139,6 +163,9 @@ export function Sidebar({
   showTitle,
   searchQuery,
   onSearchQueryChange,
+  searchResults = [],
+  searchLoading = false,
+  onSearchResultSelect,
 }: SidebarProps) {
   const allFiles = useMemo(() => {
     const currentGroup = groups.find((g) => g.name === activeGroup);
@@ -166,6 +193,8 @@ export function Sidebar({
   const [width, setWidth] = useState(getInitialWidth);
   const resizeDragging = useRef(false);
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
+  const [contentMatchesOpen, setContentMatchesOpen] = useState(true);
+  const [fileMatchesOpen, setFileMatchesOpen] = useState(true);
   const menuRef = useRef<HTMLDivElement>(null);
 
   const sensors = useSensors(
@@ -306,7 +335,100 @@ export function Sidebar({
         </div>
       )}
       <nav className="flex flex-col pb-1">
-        {viewMode === "tree" ? (
+        {isSearching ? (
+          <>
+            {searchLoading ? (
+              <div className="px-3 py-2 text-sm text-gh-text-secondary">Searching contents...</div>
+            ) : searchResults.length > 0 ? (
+              <>
+                <button
+                  type="button"
+                  className="flex w-full items-center justify-between px-3 pt-2 pb-1 text-left text-xs font-semibold uppercase tracking-wide text-gh-text-secondary"
+                  onClick={() => setContentMatchesOpen((v) => !v)}
+                  aria-expanded={contentMatchesOpen}
+                >
+                  <span>Content matches</span>
+                  <span className="text-sm leading-none">{contentMatchesOpen ? "−" : "+"}</span>
+                </button>
+                {contentMatchesOpen &&
+                  searchResults.flatMap((result) =>
+                    result.matches.map((match, index) => (
+                      <button
+                        key={`${result.fileId}:${match.line}:${index}`}
+                        type="button"
+                        className="w-full px-3 py-2 text-left border-none bg-transparent cursor-pointer transition-colors duration-150 hover:bg-gh-bg-hover"
+                        onClick={() => onSearchResultSelect?.(result.fileId, match.heading)}
+                      >
+                        <div className="flex items-center gap-2 text-sm font-medium text-gh-text">
+                          <FileIcon uploaded={result.fileId.startsWith("u")} />
+                          <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">
+                            {(showTitle && result.title) || result.fileName}
+                          </span>
+                        </div>
+                        <div className="text-xs text-gh-text-secondary">{`Line ${match.line}`}</div>
+                        <div className="mt-2 rounded-sm bg-gh-bg-hover/80 px-2 py-1.5">
+                          {match.before?.map((line, i) => (
+                            <div
+                              key={`before:${i}`}
+                              className="text-xs leading-5 text-gh-text-secondary whitespace-pre-wrap break-words"
+                            >
+                              {line}
+                            </div>
+                          ))}
+                          <div className="text-sm leading-5 text-gh-text-secondary whitespace-pre-wrap break-words">
+                            {renderHighlightedText(match.text, searchQuery)}
+                          </div>
+                          {match.after?.map((line, i) => (
+                            <div
+                              key={`after:${i}`}
+                              className="text-xs leading-5 text-gh-text-secondary whitespace-pre-wrap break-words"
+                            >
+                              {line}
+                            </div>
+                          ))}
+                        </div>
+                      </button>
+                    )),
+                  )}
+              </>
+            ) : null}
+            {files.length > 0 && (
+              <>
+                <button
+                  type="button"
+                  className="flex w-full items-center justify-between px-3 pt-2 pb-1 text-left text-xs font-semibold uppercase tracking-wide text-gh-text-secondary"
+                  onClick={() => setFileMatchesOpen((v) => !v)}
+                  aria-expanded={fileMatchesOpen}
+                >
+                  <span>File name matches</span>
+                  <span className="text-sm leading-none">{fileMatchesOpen ? "−" : "+"}</span>
+                </button>
+                {fileMatchesOpen &&
+                  files.map((f) => (
+                    <FileItem
+                      key={f.id}
+                      file={f}
+                      isActive={f.id === activeFileId}
+                      showTitle={showTitle}
+                      menuOpenId={menuOpenId}
+                      otherGroups={otherGroups}
+                      onFileSelect={onFileSelect}
+                      onMenuToggle={handleMenuToggle}
+                      onOpenInNewTab={handleOpenInNewTab}
+                      onCopyPath={handleCopyPath}
+                      onCopyLink={handleCopyLink}
+                      onMoveToGroup={handleMoveToGroup}
+                      onRemove={handleRemove}
+                      menuRef={menuRef}
+                    />
+                  ))}
+              </>
+            )}
+            {!searchLoading && searchResults.length === 0 && files.length === 0 && (
+              <div className="px-3 py-2 text-sm text-gh-text-secondary">No matches found</div>
+            )}
+          </>
+        ) : viewMode === "tree" ? (
           <TreeView
             files={files}
             activeGroup={activeGroup}
@@ -323,25 +445,6 @@ export function Sidebar({
             onRemove={handleRemove}
             menuRef={menuRef}
           />
-        ) : isSearching ? (
-          files.map((f) => (
-            <FileItem
-              key={f.id}
-              file={f}
-              isActive={f.id === activeFileId}
-              showTitle={showTitle}
-              menuOpenId={menuOpenId}
-              otherGroups={otherGroups}
-              onFileSelect={onFileSelect}
-              onMenuToggle={handleMenuToggle}
-              onOpenInNewTab={handleOpenInNewTab}
-              onCopyPath={handleCopyPath}
-              onCopyLink={handleCopyLink}
-              onMoveToGroup={handleMoveToGroup}
-              onRemove={handleRemove}
-              menuRef={menuRef}
-            />
-          ))
         ) : (
           <DndContext
             sensors={sensors}

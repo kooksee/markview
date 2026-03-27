@@ -1403,6 +1403,87 @@ func TestUploadedFileContent(t *testing.T) {
 	})
 }
 
+func TestSearch(t *testing.T) {
+	t.Run("searches file contents within a group", func(t *testing.T) {
+		s := newTestState(t)
+		dir := t.TempDir()
+
+		readme := filepath.Join(dir, "README.md")
+		guide := filepath.Join(dir, "GUIDE.md")
+		if err := os.WriteFile(readme, []byte("# Intro\ncache warmup\nmore cache\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(guide, []byte("# Guide\nnothing here\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := s.AddFile(readme, DefaultGroup); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := s.AddFile(guide, DefaultGroup); err != nil {
+			t.Fatal(err)
+		}
+		s.AddUploadedFile("upload.md", "# Upload\ncache line\n", "docs")
+
+		handler := NewHandler(s)
+		req := httptest.NewRequest("GET", "/_/api/search?q=cache&group=default&limit=10&context=1", nil)
+		rec := httptest.NewRecorder()
+
+		handler.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Fatalf("got status %d, want %d", rec.Code, http.StatusOK)
+		}
+
+		var resp searchResponse
+		if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+			t.Fatal(err)
+		}
+		if resp.Total != 2 {
+			t.Fatalf("got total %d, want 2", resp.Total)
+		}
+		if len(resp.Results) != 1 {
+			t.Fatalf("got %d results, want 1", len(resp.Results))
+		}
+		if resp.Results[0].FileName != "README.md" {
+			t.Fatalf("got file %q, want README.md", resp.Results[0].FileName)
+		}
+		if got := resp.Results[0].Matches[0].Heading; got != "Intro" {
+			t.Fatalf("got heading %q, want Intro", got)
+		}
+		if got := resp.Results[0].Matches[0].Before; len(got) != 1 || got[0] != "# Intro" {
+			t.Fatalf("got before %#v, want [\"# Intro\"]", got)
+		}
+	})
+
+	t.Run("returns 400 for missing query", func(t *testing.T) {
+		s := newTestState(t)
+		handler := NewHandler(s)
+
+		req := httptest.NewRequest("GET", "/_/api/search?group=default", nil)
+		rec := httptest.NewRecorder()
+
+		handler.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("got status %d, want %d", rec.Code, http.StatusBadRequest)
+		}
+	})
+
+	t.Run("returns 404 for unknown group", func(t *testing.T) {
+		s := newTestState(t)
+		handler := NewHandler(s)
+
+		req := httptest.NewRequest("GET", "/_/api/search?q=cache&group=missing", nil)
+		rec := httptest.NewRecorder()
+
+		handler.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusNotFound {
+			t.Fatalf("got status %d, want %d", rec.Code, http.StatusNotFound)
+		}
+	})
+}
+
 func TestMoveUploadedFile(t *testing.T) {
 	t.Run("moves uploaded file between groups", func(t *testing.T) {
 		s := newTestState(t)

@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Sidebar } from "./Sidebar";
-import type { Group } from "../hooks/useApi";
+import type { Group, SearchResult } from "../hooks/useApi";
 
 const groups: Group[] = [
   {
@@ -17,6 +17,29 @@ const groups: Group[] = [
     files: [{ id: "ccc33333", name: "api.md", path: "/docs/api.md" }],
   },
 ];
+
+const searchResults: SearchResult[] = [
+  {
+    fileId: "aaa11111",
+    fileName: "README.md",
+    title: "Getting Started",
+    path: "/README.md",
+    matches: [
+      {
+        line: 3,
+        text: "cache line",
+        before: ["# Intro"],
+        after: ["after line"],
+        heading: "Intro",
+        anchor: { kind: "heading", value: "Intro" },
+      },
+    ],
+  },
+];
+
+function hasTextContent(text: string) {
+  return (_content: string, element: Element | null) => element?.textContent === text;
+}
 
 beforeEach(() => {
   localStorage.clear();
@@ -265,5 +288,48 @@ describe("Sidebar", () => {
     );
     expect(screen.getByText("README.md")).toBeInTheDocument();
     expect(screen.queryByText("GUIDE.md")).not.toBeInTheDocument();
+  });
+
+  it("renders content search results", () => {
+    render(
+      <Sidebar
+        groups={groups}
+        activeGroup="default"
+        activeFileId={null}
+        onFileSelect={() => {}}
+        onFilesReorder={() => {}}
+        viewMode="flat"
+        showTitle={false}
+        searchQuery="cache"
+        onSearchQueryChange={() => {}}
+        searchResults={searchResults}
+      />,
+    );
+    expect(screen.getByText("Content matches")).toBeInTheDocument();
+    expect(screen.getByText("Line 3")).toBeInTheDocument();
+    expect(screen.getByText(hasTextContent("cache line"))).toBeInTheDocument();
+  });
+
+  it("toggles content matches section", async () => {
+    const user = userEvent.setup();
+    render(
+      <Sidebar
+        groups={groups}
+        activeGroup="default"
+        activeFileId={null}
+        onFileSelect={() => {}}
+        onFilesReorder={() => {}}
+        viewMode="flat"
+        showTitle={false}
+        searchQuery="cache"
+        onSearchQueryChange={() => {}}
+        searchResults={searchResults}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: /content matches/i }));
+    expect(screen.queryByText(hasTextContent("cache line"))).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /content matches/i }));
+    expect(screen.getByText(hasTextContent("cache line"))).toBeInTheDocument();
   });
 });
