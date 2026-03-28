@@ -11,6 +11,7 @@ import "katex/dist/katex.min.css";
 import { codeToHtml } from "shiki";
 import mermaid from "mermaid";
 import { fetchFileContent, openRelativeFile } from "../hooks/useApi";
+import { escapeRegExp } from "../utils/regex";
 import { RawToggle } from "./RawToggle";
 import { TocToggle } from "./TocToggle";
 import { CopyButton } from "./CopyButton";
@@ -46,6 +47,70 @@ interface MarkdownViewerProps {
   onRemoveFile: () => void;
   isWide: boolean;
   onZoom?: (content: ZoomContent) => void;
+  scrollToHeading?: string | null;
+  onScrolledToHeading?: () => void;
+  searchQuery?: string | null;
+}
+
+interface SearchHitMarker {
+  top: number;
+  height: number;
+}
+
+const SEARCH_HIT_COLUMN_OFFSET = -24;
+
+function collectSearchHitMarkers(root: HTMLElement, query: string): SearchHitMarker[] {
+  const trimmed = query.trim();
+  if (!trimmed) {
+    return [];
+  }
+
+  const pattern = new RegExp(escapeRegExp(trimmed), "gi");
+  const articleRect = root.getBoundingClientRect();
+  const markers = new Map<string, SearchHitMarker>();
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+    acceptNode(node) {
+      const parent = node.parentElement;
+      if (
+        parent == null ||
+        parent.closest("script, style, .frontmatter-block") != null ||
+        node.textContent == null ||
+        node.textContent.trim() === ""
+      ) {
+        return NodeFilter.FILTER_REJECT;
+      }
+      pattern.lastIndex = 0;
+      return pattern.test(node.textContent) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT;
+    },
+  });
+
+  let current = walker.nextNode();
+  while (current != null) {
+    if (current instanceof Text) {
+      const text = current.textContent ?? "";
+      pattern.lastIndex = 0;
+      for (const match of text.matchAll(pattern)) {
+        const start = match.index ?? 0;
+        const end = start + match[0].length;
+        const range = document.createRange();
+        range.setStart(current, start);
+        range.setEnd(current, end);
+        const [rect] = Array.from(range.getClientRects());
+        if (rect != null && rect.height > 0 && rect.width > 0) {
+          const top = rect.top - articleRect.top;
+          const height = rect.height;
+          const key = `${Math.round(top)}:${Math.round(height)}`;
+          markers.set(key, {
+            top,
+            height,
+          });
+        }
+      }
+    }
+    current = walker.nextNode();
+  }
+
+  return [...markers.values()].sort((a, b) => a.top - b.top);
 }
 
 function getMermaidTheme(): "dark" | "default" {
@@ -440,10 +505,14 @@ export function MarkdownViewer({
   onRemoveFile,
   isWide,
   onZoom,
+  scrollToHeading,
+  onScrolledToHeading,
+  searchQuery,
 }: MarkdownViewerProps) {
   const [content, setContent] = useState("");
   const [loading, setLoading] = useState(true);
   const [isRawView, setIsRawView] = useState(false);
+  const [searchHitMarkers, setSearchHitMarkers] = useState<SearchHitMarker[]>([]);
   const articleRef = useRef<HTMLElement>(null);
   const [prevFetchKey, setPrevFetchKey] = useState({ fileId, revision });
 
@@ -632,6 +701,47 @@ export function MarkdownViewer({
     }
   }, [loading, renderedContent]);
 
+  useLayoutEffect(() => {
+    if (loading || !scrollToHeading || !articleRef.current) {
+      return;
+    }
+
+    const headings = articleRef.current.querySelectorAll("h1, h2, h3, h4, h5, h6");
+    const target = Array.from(headings).find(
+      (el) => (el.textContent ?? "").trim() === scrollToHeading,
+    );
+    if (target) {
+      target.scrollIntoView({ behavior: "smooth", block: "start" });
+      onScrolledToHeading?.();
+    }
+  }, [loading, renderedContent, scrollToHeading, onScrolledToHeading]);
+
+  useLayoutEffect(() => {
+    if (loading || !articleRef.current || !isMarkdown || isRawView || !searchQuery?.trim()) {
+      setSearchHitMarkers([]);
+      return;
+    }
+
+    const updateMarkers = () => {
+      if (!articleRef.current) {
+        return;
+      }
+      setSearchHitMarkers(collectSearchHitMarkers(articleRef.current, searchQuery));
+    };
+
+    updateMarkers();
+
+    const resizeObserver = new ResizeObserver(() => updateMarkers());
+    resizeObserver.observe(articleRef.current);
+    for (const element of articleRef.current.querySelectorAll("img, svg")) {
+      resizeObserver.observe(element);
+    }
+
+    return () => {
+      resizeObserver.disconnect();
+    };
+  }, [loading, renderedContent, isMarkdown, isRawView, searchQuery]);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-50 text-gh-text-secondary text-sm">
@@ -644,8 +754,21 @@ export function MarkdownViewer({
     <div className="flex items-start gap-2">
       <article
         ref={articleRef}
-        className={`markdown-body min-w-0 flex-1${isWide ? " markdown-body--wide" : ""}`}
+        className={`markdown-body relative min-w-0 flex-1 overflow-visible${isWide ? " markdown-body--wide" : ""}`}
       >
+        <div className="pointer-events-none absolute inset-0 z-10 overflow-visible">
+          {searchHitMarkers.map((marker, index) => (
+            <div
+              key={`${marker.top}:${marker.height}:${index}`}
+              className="absolute w-1 rounded-none bg-gh-text/80"
+              style={{
+                left: SEARCH_HIT_COLUMN_OFFSET,
+                top: marker.top,
+                height: marker.height,
+              }}
+            />
+          ))}
+        </div>
         {renderedContent}
       </article>
       <div className="shrink-0 flex flex-col gap-2 -mr-4 -mt-4">

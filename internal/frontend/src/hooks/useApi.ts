@@ -21,6 +21,39 @@ export interface VersionInfo {
   revision: string;
 }
 
+export interface SearchAnchor {
+  kind: string;
+  value: string;
+}
+
+export interface SearchMatch {
+  line: number;
+  column?: number;
+  text: string;
+  before?: string[];
+  after?: string[];
+  heading?: string;
+  anchor: SearchAnchor;
+}
+
+export interface SearchResult {
+  fileId: string;
+  fileName: string;
+  title?: string;
+  path: string;
+  uploaded: boolean;
+  matches: SearchMatch[];
+}
+
+export interface SearchResponse {
+  query: string;
+  group: string;
+  limit: number;
+  context: number;
+  total: number;
+  results: SearchResult[];
+}
+
 export async function fetchGroups(): Promise<Group[]> {
   const res = await fetch("/_/api/groups");
   if (!res.ok) throw new Error("Failed to fetch groups");
@@ -89,5 +122,22 @@ export async function restartServer(): Promise<void> {
 export async function fetchVersion(): Promise<VersionInfo> {
   const res = await fetch("/_/api/version");
   if (!res.ok) throw new Error("Failed to fetch version");
+  return res.json();
+}
+
+export async function fetchSearchResults(
+  query: string,
+  group: string,
+  limit = 50,
+  context = 2,
+): Promise<SearchResponse> {
+  const params = new URLSearchParams({
+    q: query,
+    group,
+    limit: String(limit),
+    context: String(context),
+  });
+  const res = await fetch(`/_/api/search?${params.toString()}`);
+  if (!res.ok) throw new Error("Failed to search file contents");
   return res.json();
 }

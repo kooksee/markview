@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -1192,6 +1193,39 @@ type fileContentResponse struct {
 	BaseDir string `json:"baseDir"`
 }
 
+type searchAnchor struct {
+	Kind  string `json:"kind"`
+	Value string `json:"value"`
+}
+
+type searchMatch struct {
+	Line    int          `json:"line"`
+	Column  int          `json:"column,omitempty"`
+	Text    string       `json:"text"`
+	Before  []string     `json:"before,omitempty"`
+	After   []string     `json:"after,omitempty"`
+	Heading string       `json:"heading,omitempty"`
+	Anchor  searchAnchor `json:"anchor"`
+}
+
+type searchResult struct {
+	FileID   string        `json:"fileId"`
+	FileName string        `json:"fileName"`
+	Title    string        `json:"title,omitempty"`
+	Path     string        `json:"path"`
+	Uploaded bool          `json:"uploaded"`
+	Matches  []searchMatch `json:"matches"`
+}
+
+type searchResponse struct {
+	Query   string         `json:"query"`
+	Group   string         `json:"group"`
+	Limit   int            `json:"limit"`
+	Context int            `json:"context"`
+	Total   int            `json:"total"`
+	Results []searchResult `json:"results"`
+}
+
 type openFileRequest struct {
 	FileID string `json:"fileId"`
 	Path   string `json:"path"`
@@ -1207,6 +1241,7 @@ func NewHandler(state *State) http.Handler {
 	mux.HandleFunc("GET /_/api/groups", handleGroups(state))
 	mux.HandleFunc("PUT /_/api/reorder", handleReorderFiles(state))
 	mux.HandleFunc("GET /_/api/files/{id}/content", handleFileContent(state))
+	mux.HandleFunc("GET /_/api/search", handleSearch(state))
 	mux.HandleFunc("GET /_/api/files/{id}/raw/{path...}", handleFileRaw(state))
 	mux.HandleFunc("POST /_/api/files/open", handleOpenFile(state))
 	mux.HandleFunc("POST /_/api/patterns", handleAddPattern(state))
@@ -1421,6 +1456,208 @@ func handleFileContent(state *State) http.HandlerFunc {
 			slog.Error("failed to encode response", "error", err)
 		}
 	}
+}
+
+func handleSearch(state *State) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		q := strings.TrimSpace(r.URL.Query().Get("q"))
+		if q == "" {
+			http.Error(w, "missing search query", http.StatusBadRequest)
+			return
+		}
+
+		groupName, err := ResolveGroupName(r.URL.Query().Get("group"))
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		limit := 50
+		if v := r.URL.Query().Get("limit"); v != "" {
+			n, err := strconv.Atoi(v)
+			if err != nil || n <= 0 {
+				http.Error(w, "invalid limit", http.StatusBadRequest)
+				return
+			}
+			if n > 200 {
+				n = 200
+			}
+			limit = n
+		}
+
+		contextLines := 2
+		if v := r.URL.Query().Get("context"); v != "" {
+			n, err := strconv.Atoi(v)
+			if err != nil || n < 0 {
+				http.Error(w, "invalid context", http.StatusBadRequest)
+				return
+			}
+			if n > 5 {
+				n = 5
+			}
+			contextLines = n
+		}
+
+		groups := state.Groups()
+		var files []*FileEntry
+		found := false
+		for i := range groups {
+			if groups[i].Name == groupName {
+				files = append([]*FileEntry(nil), groups[i].Files...)
+				found = true
+				break
+			}
+		}
+		if !found {
+			http.Error(w, "group not found", http.StatusNotFound)
+			return
+		}
+
+		resp := searchResponse{
+			Query:   q,
+			Group:   groupName,
+			Limit:   limit,
+			Context: contextLines,
+			Results: []searchResult{},
+		}
+
+		needle := strings.ToLower(q)
+		remaining := limit
+		for _, entry := range files {
+			if remaining == 0 {
+				break
+			}
+			content, err := readSearchableContent(entry)
+			if err != nil {
+				slog.Warn("failed to read file for search", "id", entry.ID, "path", entry.Path, "error", err)
+				continue
+			}
+			matches := findSearchMatches(content, needle, contextLines, remaining)
+			if len(matches) == 0 {
+				continue
+			}
+			resp.Results = append(resp.Results, searchResult{
+				FileID:   entry.ID,
+				FileName: entry.Name,
+				Title:    entry.Title,
+				Path:     entry.Path,
+				Uploaded: entry.Uploaded,
+				Matches:  matches,
+			})
+			resp.Total += len(matches)
+			remaining -= len(matches)
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(resp); err != nil {
+			slog.Error("failed to encode response", "error", err)
+		}
+	}
+}
+
+func readSearchableContent(entry *FileEntry) (string, error) {
+	if entry.Uploaded {
+		return entry.content, nil
+	}
+	data, err := os.ReadFile(entry.Path) //nolint:gosec // Path is server-managed, not user-supplied
+	if err != nil {
+		return "", err
+	}
+	return string(data), nil
+}
+
+func findSearchMatches(content, needle string, contextLines, limit int) []searchMatch {
+	if needle == "" || limit <= 0 {
+		return nil
+	}
+
+	lines := strings.Split(content, "\n")
+	matches := make([]searchMatch, 0)
+	currentHeading := ""
+	fenceChar := byte(0)
+	fenceLen := 0
+	for i, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		indented := leadingColumns(line) >= 4
+		if fenceChar != 0 {
+			if !indented && len(trimmed) > 0 && trimmed[0] == fenceChar {
+				fl := len(trimmed) - len(strings.TrimLeft(trimmed, string(fenceChar)))
+				if fl >= fenceLen && strings.TrimLeft(trimmed[fl:], " \t") == "" {
+					fenceChar = 0
+					fenceLen = 0
+				}
+			}
+		} else if !indented {
+			if strings.HasPrefix(trimmed, "```") || strings.HasPrefix(trimmed, "~~~") {
+				fc := trimmed[0]
+				fl := len(trimmed) - len(strings.TrimLeft(trimmed, string(fc)))
+				fenceChar = fc
+				fenceLen = fl
+			} else if heading := extractHeadingLine(line); heading != "" {
+				currentHeading = heading
+			}
+		}
+
+		index := strings.Index(strings.ToLower(line), needle)
+		if index < 0 {
+			continue
+		}
+
+		beforeStart := max(0, i-contextLines)
+		afterEnd := min(len(lines), i+contextLines+1)
+		match := searchMatch{
+			Line:    i + 1,
+			Column:  index + 1,
+			Text:    line,
+			Before:  append([]string(nil), lines[beforeStart:i]...),
+			After:   append([]string(nil), lines[i+1:afterEnd]...),
+			Heading: currentHeading,
+			Anchor: searchAnchor{
+				Kind:  "heading",
+				Value: currentHeading,
+			},
+		}
+		matches = append(matches, match)
+		if len(matches) >= limit {
+			break
+		}
+	}
+
+	return matches
+}
+
+func extractHeadingLine(line string) string {
+	if leadingColumns(line) >= 4 {
+		return ""
+	}
+	trimmed := strings.TrimSpace(line)
+	if !strings.HasPrefix(trimmed, "#") {
+		return ""
+	}
+	hashes := len(trimmed) - len(strings.TrimLeft(trimmed, "#"))
+	if hashes == 0 || hashes > 6 {
+		return ""
+	}
+	after := trimmed[hashes:]
+	if len(after) == 0 || (after[0] != ' ' && after[0] != '\t') {
+		return ""
+	}
+	title := strings.TrimSpace(after)
+	// Strip optional closing # sequence (CommonMark §4.2).
+	if len(title) > 0 && title[len(title)-1] == '#' {
+		i := len(title)
+		for i > 0 && title[i-1] == '#' {
+			i--
+		}
+		if i == 0 || (title[i-1] == ' ' || title[i-1] == '\t') {
+			if i == 0 {
+				title = ""
+			} else {
+				title = strings.TrimRight(title[:i], " \t")
+			}
+		}
+	}
+	return title
 }
 
 func handleFileRaw(state *State) http.HandlerFunc {

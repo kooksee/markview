@@ -17,8 +17,8 @@ import { useSSE } from "./hooks/useSSE";
 import { useFileDrop } from "./hooks/useFileDrop";
 import { useActiveHeading } from "./hooks/useActiveHeading";
 import { useScrollRestoration, SCROLL_SESSION_KEY } from "./hooks/useScrollRestoration";
-import type { Group } from "./hooks/useApi";
-import { fetchGroups, removeFile, reorderFiles } from "./hooks/useApi";
+import type { Group, SearchResult } from "./hooks/useApi";
+import { fetchGroups, fetchSearchResults, removeFile, reorderFiles } from "./hooks/useApi";
 import { allFileIds, parseGroupFromPath, parseFileIdFromSearch, groupToPath } from "./utils/groups";
 import { isMarkdownFile } from "./utils/filetype";
 
@@ -63,6 +63,9 @@ export function App() {
   const [headings, setHeadings] = useState<TocHeading[]>([]);
   const [contentRevision, setContentRevision] = useState(0);
   const [searchQuery, setSearchQuery] = useState<string | null>(null);
+  const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [pendingSearchHeading, setPendingSearchHeading] = useState<string | null>(null);
   const [viewModes, setViewModes] = useState<Record<string, ViewMode>>(() => {
     try {
       const stored = localStorage.getItem(VIEWMODE_STORAGE_KEY);
@@ -203,6 +206,38 @@ export function App() {
     }
   }, [initialFileId]);
 
+  useEffect(() => {
+    if (!searchQuery?.trim()) {
+      setSearchResults([]);
+      setSearchLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setSearchLoading(true);
+
+    const timer = setTimeout(() => {
+      fetchSearchResults(searchQuery, activeGroup)
+        .then((resp) => {
+          if (!cancelled) {
+            setSearchResults(resp.results);
+            setSearchLoading(false);
+          }
+        })
+        .catch(() => {
+          if (!cancelled) {
+            setSearchResults([]);
+            setSearchLoading(false);
+          }
+        });
+    }, 300);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [searchQuery, activeGroup]);
+
   const activeFile = useMemo(
     () => groups.find((g) => g.name === activeGroup)?.files.find((f) => f.id === activeFileId),
     [groups, activeGroup, activeFileId],
@@ -290,6 +325,12 @@ export function App() {
 
   const handleFileOpened = useCallback((fileId: string) => {
     setActiveFileId(fileId);
+    setPendingSearchHeading(null);
+  }, []);
+
+  const handleSearchResultSelect = useCallback((fileId: string, heading?: string) => {
+    setActiveFileId(fileId);
+    setPendingSearchHeading(heading || null);
   }, []);
 
   const handleRemoveFile = useCallback(() => {
@@ -388,6 +429,9 @@ export function App() {
             showTitle={currentShowTitle}
             searchQuery={searchQuery}
             onSearchQueryChange={setSearchQuery}
+            searchResults={searchResults}
+            searchLoading={searchLoading}
+            onSearchResultSelect={handleSearchResultSelect}
           />
         )}
         <main className="flex-1 flex flex-col overflow-hidden">
@@ -408,6 +452,9 @@ export function App() {
                 onRemoveFile={handleRemoveFile}
                 isWide={isWide}
                 onZoom={handleZoom}
+                scrollToHeading={pendingSearchHeading}
+                onScrolledToHeading={() => setPendingSearchHeading(null)}
+                searchQuery={searchQuery}
               />
             ) : (
               <div className="flex items-center justify-center h-50 text-gh-text-secondary text-sm">
