@@ -325,6 +325,7 @@ export function App() {
 
   const handleFileOpened = useCallback((fileId: string) => {
     setActiveFileId(fileId);
+    setPendingSearchHeading(null);
   }, []);
 
   const handleSearchResultSelect = useCallback((fileId: string, heading?: string) => {

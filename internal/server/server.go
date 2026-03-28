@@ -1578,15 +1578,16 @@ func findSearchMatches(content, needle string, contextLines, limit int) []search
 	fenceLen := 0
 	for i, line := range lines {
 		trimmed := strings.TrimSpace(line)
+		indented := leadingColumns(line) >= 4
 		if fenceChar != 0 {
-			if len(trimmed) > 0 && trimmed[0] == fenceChar {
+			if !indented && len(trimmed) > 0 && trimmed[0] == fenceChar {
 				fl := len(trimmed) - len(strings.TrimLeft(trimmed, string(fenceChar)))
 				if fl >= fenceLen && strings.TrimLeft(trimmed[fl:], " \t") == "" {
 					fenceChar = 0
 					fenceLen = 0
 				}
 			}
-		} else {
+		} else if !indented {
 			if strings.HasPrefix(trimmed, "```") || strings.HasPrefix(trimmed, "~~~") {
 				fc := trimmed[0]
 				fl := len(trimmed) - len(strings.TrimLeft(trimmed, string(fc)))
