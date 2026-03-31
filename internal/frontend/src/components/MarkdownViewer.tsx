@@ -25,10 +25,32 @@ import type { TocHeading } from "./TocPanel";
 import type { Components } from "react-markdown";
 import "github-markdown-css/github-markdown.css";
 
+// Strip the `user-content-` prefix that remark-gfm bakes into footnote IDs/hrefs,
+// so rehype-sanitize can re-add it exactly once (avoiding double-prefixed IDs).
+function rehypeStripClobberPrefix() {
+  const PREFIX = "user-content-";
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  function walk(node: any) {
+    if (node.properties) {
+      const props = node.properties;
+      // Only strip from IDs; rehype-sanitize re-adds the prefix to IDs but not hrefs.
+      if (typeof props.id === "string" && props.id.startsWith(PREFIX)) {
+        props.id = props.id.slice(PREFIX.length);
+      }
+    }
+    if (node.children) {
+      for (const child of node.children) {
+        if (child.type === "element") walk(child);
+      }
+    }
+  }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return (tree: any) => { walk(tree); };
+}
+
 // Extend default GitHub-compatible schema to allow style/align attributes used in raw HTML
 const sanitizeSchema = {
   ...defaultSchema,
-  clobberPrefix: "",
   attributes: {
     ...defaultSchema.attributes,
     span: [...(defaultSchema.attributes?.["span"] || []), "style"],
@@ -607,12 +629,14 @@ export function MarkdownViewer({
               <a
                 href={href}
                 onClick={(e) => {
+                  if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
                   const id = href?.slice(1);
                   if (!id) return;
                   const target = document.getElementById(id);
                   if (target) {
                     e.preventDefault();
-                    target.scrollIntoView({ behavior: "smooth", block: "start" });
+                    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+                    target.scrollIntoView({ behavior: reduced ? "auto" : "smooth", block: "start" });
                     history.pushState(null, "", href);
                   }
                 }}
@@ -669,6 +693,7 @@ export function MarkdownViewer({
           remarkPlugins={[remarkGfm, remarkMath]}
           rehypePlugins={[
             rehypeRaw,
+            rehypeStripClobberPrefix,
             [rehypeSanitize, sanitizeSchema],
             rehypeGithubAlerts,
             rehypeSlug,

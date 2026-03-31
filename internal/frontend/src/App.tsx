@@ -377,7 +377,8 @@ export function App() {
 
   const handleHeadingClick = useCallback((id: string) => {
     const el = document.getElementById(id);
-    el?.scrollIntoView({ behavior: "smooth", block: "start" });
+    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    el?.scrollIntoView({ behavior: reduced ? "auto" : "smooth", block: "start" });
   }, []);
 
   const handleZoom = useCallback((content: ZoomContent) => {
