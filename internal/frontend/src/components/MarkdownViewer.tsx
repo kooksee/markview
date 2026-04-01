@@ -44,6 +44,59 @@ async function renderPlantUml(code: string): Promise<string> {
   return response.text();
 }
 
+function hasPlantUmlCustomTheme(code: string): boolean {
+  return /(^|\n)\s*(!theme|skinparam\s+)/i.test(code);
+}
+
+function injectPlantUmlThemePreset(code: string, isDark: boolean): string {
+  if (hasPlantUmlCustomTheme(code)) {
+    return code;
+  }
+
+  const preset = isDark
+    ? [
+      "skinparam shadowing false",
+      "skinparam backgroundColor transparent",
+      "skinparam defaultFontName -apple-system,BlinkMacSystemFont,Segoe UI,Helvetica,Arial",
+      "skinparam defaultFontColor #e6edf3",
+      "skinparam ArrowColor #58a6ff",
+      "skinparam BorderColor #8b949e",
+      "skinparam NoteBackgroundColor #161b22",
+      "skinparam NoteBorderColor #30363d",
+      "skinparam NoteFontColor #c9d1d9",
+      "skinparam packageStyle rectangle",
+      "skinparam componentStyle rectangle",
+      "skinparam RectangleBackgroundColor #161b22",
+      "skinparam RectangleBorderColor #30363d",
+      "skinparam RectangleFontColor #e6edf3",
+    ].join("\n")
+    : [
+      "skinparam shadowing false",
+      "skinparam backgroundColor transparent",
+      "skinparam defaultFontName -apple-system,BlinkMacSystemFont,Segoe UI,Helvetica,Arial",
+      "skinparam defaultFontColor #1f2328",
+      "skinparam ArrowColor #0969da",
+      "skinparam BorderColor #57606a",
+      "skinparam NoteBackgroundColor #f6f8fa",
+      "skinparam NoteBorderColor #d0d7de",
+      "skinparam NoteFontColor #24292f",
+      "skinparam packageStyle rectangle",
+      "skinparam componentStyle rectangle",
+      "skinparam RectangleBackgroundColor #ffffff",
+      "skinparam RectangleBorderColor #d0d7de",
+      "skinparam RectangleFontColor #1f2328",
+    ].join("\n");
+
+  const startRe = /(\s*@start(?:uml|mindmap|wbs|gantt|salt)\b[^\n]*\n?)/i;
+  const match = code.match(startRe);
+  if (!match || match.index === undefined) {
+    return `${preset}\n${code}`;
+  }
+
+  const insertPos = match.index + match[1].length;
+  return `${code.slice(0, insertPos)}${preset}\n${code.slice(insertPos)}`;
+}
+
 async function renderSvgBob(ascii: string): Promise<string> {
   if (!svgbobModulePromise) {
     svgbobModulePromise = import("bob-wasm").then((module) => module.default);
@@ -828,6 +881,7 @@ export function SvgBobBlock({ code }: { code: string }) {
 export function PlantUmlBlock({ code }: { code: string }) {
   const [svgUrl, setSvgUrl] = useState<string | null>(null);
   const [renderStatus, setRenderStatus] = useState<"pending" | "rendered" | "failed">("pending");
+  const [themeVersion, setThemeVersion] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
@@ -912,12 +966,26 @@ export function PlantUmlBlock({ code }: { code: string }) {
   }, []);
 
   useEffect(() => {
+    const observer = new MutationObserver(() => {
+      setThemeVersion((v) => v + 1);
+    });
+
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["data-theme"],
+    });
+
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
     let cancelled = false;
 
     const doRender = async () => {
       setRenderStatus("pending");
       try {
-        const svg = await renderPlantUml(code);
+        const nextCode = injectPlantUmlThemePreset(code, getMermaidTheme() === "dark");
+        const svg = await renderPlantUml(nextCode);
         const nextUrl = URL.createObjectURL(new Blob([svg], { type: "image/svg+xml;charset=utf-8" }));
 
         if (!cancelled) {
@@ -951,7 +1019,7 @@ export function PlantUmlBlock({ code }: { code: string }) {
         objectUrlRef.current = null;
       }
     };
-  }, [code]);
+  }, [code, themeVersion]);
 
   if (svgUrl) {
     const canvasStyle = isFullscreen

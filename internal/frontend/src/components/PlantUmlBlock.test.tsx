@@ -105,4 +105,51 @@ describe("PlantUmlBlock", () => {
             writable: true,
         });
     });
+
+    it("injects default PlantUML theme preset when no custom style exists", async () => {
+        const fetchMock = vi.fn().mockResolvedValue({
+            ok: true,
+            status: 200,
+            text: vi.fn().mockResolvedValue('<svg viewBox="0 0 100 60"><text>ok</text></svg>'),
+        });
+        vi.stubGlobal("fetch", fetchMock);
+
+        render(<PlantUmlBlock code="@startuml\nAlice -> Bob: Hello\n@enduml" />);
+
+        await waitFor(() => {
+            expect(screen.getByRole("img", { name: "PlantUML diagram" })).toBeInTheDocument();
+        });
+
+        const body = String(fetchMock.mock.calls[0]?.[1]?.body ?? "");
+        expect(body).toContain("skinparam shadowing false");
+        expect(body).toContain("skinparam defaultFontName");
+    });
+
+    it("keeps user custom skinparam without injecting preset", async () => {
+        const fetchMock = vi.fn().mockResolvedValue({
+            ok: true,
+            status: 200,
+            text: vi.fn().mockResolvedValue('<svg viewBox="0 0 100 60"><text>ok</text></svg>'),
+        });
+        vi.stubGlobal("fetch", fetchMock);
+
+        render(
+            <PlantUmlBlock
+                code={[
+                    "@startuml",
+                    "skinparam ArrowColor #ff0000",
+                    "Alice -> Bob: custom",
+                    "@enduml",
+                ].join("\n")}
+            />,
+        );
+
+        await waitFor(() => {
+            expect(screen.getByRole("img", { name: "PlantUML diagram" })).toBeInTheDocument();
+        });
+
+        const body = String(fetchMock.mock.calls[0]?.[1]?.body ?? "");
+        expect(body).toContain("skinparam ArrowColor #ff0000");
+        expect(body).not.toContain("skinparam defaultFontName");
+    });
 });
