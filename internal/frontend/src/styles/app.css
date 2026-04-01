@@ -127,6 +127,11 @@ body,
   background: var(--color-gh-bg-secondary);
 }
 
+.markdown-body .svgbob-block .svgbob-canvas {
+  display: inline-block;
+  transform-origin: center center;
+}
+
 .markdown-body .svgbob-block .svgbob-image {
   display: block;
   width: auto;
@@ -140,6 +145,30 @@ body,
 
 [data-theme="dark"] .markdown-body .svgbob-block .svgbob-image {
   filter: contrast(1.08) brightness(1.05);
+}
+
+.markdown-body .svgbob-block:fullscreen {
+  background: var(--color-gh-bg);
+  padding: 24px;
+}
+
+.markdown-body .svgbob-block:fullscreen::backdrop {
+  background: rgba(15, 23, 42, 0.82);
+}
+
+.markdown-body .svgbob-block:fullscreen .svgbob-render {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+}
+
+.markdown-body .svgbob-block:fullscreen .svgbob-render--interactive .svgbob-image {
+  max-width: none;
+  max-height: none;
 }
 
 /* Undo Tailwind preflight's display:block on img inside markdown

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import { SvgBobBlock } from "./MarkdownViewer";
 
 const renderSvgBob = vi.fn();
@@ -64,6 +64,36 @@ describe("SvgBobBlock", () => {
             expect(screen.getByText("+---+")).toBeInTheDocument();
             expect(screen.queryByRole("img", { name: "SVG Bob diagram" })).not.toBeInTheDocument();
             expect(screen.getByTitle("Copy code")).toBeInTheDocument();
+        });
+    });
+
+    it("calls requestFullscreen on fullscreen button click", async () => {
+        vi.mocked(renderSvgBob).mockReturnValue('<svg viewBox="0 0 100 40"><text>ok</text></svg>');
+
+        const requestFullscreenMock = vi.fn().mockResolvedValue(undefined);
+        const originalRequestFullscreen = HTMLElement.prototype.requestFullscreen;
+        Object.defineProperty(HTMLElement.prototype, "requestFullscreen", {
+            value: requestFullscreenMock,
+            configurable: true,
+            writable: true,
+        });
+
+        render(<SvgBobBlock code={"+---+"} />);
+
+        await waitFor(() => {
+            expect(screen.getByRole("img", { name: "SVG Bob diagram" })).toBeInTheDocument();
+        });
+
+        fireEvent.click(screen.getByTitle("Fullscreen"));
+
+        await waitFor(() => {
+            expect(requestFullscreenMock).toHaveBeenCalledTimes(1);
+        });
+
+        Object.defineProperty(HTMLElement.prototype, "requestFullscreen", {
+            value: originalRequestFullscreen,
+            configurable: true,
+            writable: true,
         });
     });
 });
