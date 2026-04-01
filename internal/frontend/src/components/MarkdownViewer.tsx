@@ -169,6 +169,16 @@ function cleanupMermaidErrors() {
   document.querySelectorAll("[id^='dmermaid-']").forEach((el) => el.remove());
 }
 
+function normalizeMermaidLabelNewlines(code: string): string {
+  const normalizedQuoted = code
+    .replace(/"([^"\\]|\\.)*"/g, (segment) => segment.replace(/\\n/g, "<br/>"))
+    .replace(/'([^'\\]|\\.)*'/g, (segment) => segment.replace(/\\n/g, "<br/>"));
+
+  return normalizedQuoted.replace(/\[([^\[\]]*\\n[^\[\]]*)\]/g, (_whole, label: string) => {
+    return `[${label.replace(/\\n/g, "<br/>")}]`;
+  });
+}
+
 function normalizeMermaidSvg(svg: string, layout: MermaidLayout, renderWidthPx: number): string {
   try {
     const doc = new DOMParser().parseFromString(svg, "image/svg+xml");
@@ -292,6 +302,7 @@ export function MermaidBlock({ code }: { code: string }) {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
+  const normalizedCode = useMemo(() => normalizeMermaidLabelNewlines(code), [code]);
   const mermaidComplexity = useMemo(() => estimateMermaidComplexity(code), [code]);
   const defaultFullscreenZoom = useMemo(
     () => getDefaultFullscreenZoom(mermaidComplexity),
@@ -438,7 +449,7 @@ export function MermaidBlock({ code }: { code: string }) {
         },
       });
       try {
-        let renderedSvg = await renderMermaid(code, width);
+        let renderedSvg = await renderMermaid(normalizedCode, width);
         let dimensions = parseMermaidSvgDimensions(renderedSvg);
         let nextLayout = resolveMermaidLayout(mermaidComplexity, isFullscreen, dimensions, width);
 
@@ -477,7 +488,7 @@ export function MermaidBlock({ code }: { code: string }) {
       observer.disconnect();
       resizeObserver?.disconnect();
     };
-  }, [code, isFullscreen, mermaidComplexity, resolveRenderWidth]);
+  }, [isFullscreen, mermaidComplexity, normalizedCode, resolveRenderWidth]);
 
   if (svg) {
     const canvasStyle = isFullscreen

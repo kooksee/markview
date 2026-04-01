@@ -302,6 +302,24 @@ describe("MermaidBlock", () => {
     }
   });
 
+  it("converts escaped newline markers in labels to html line breaks before render", async () => {
+    vi.mocked(mermaid.render).mockResolvedValue({
+      svg: "<svg>diagram</svg>",
+      bindFunctions: undefined,
+      diagramType: "flowchart",
+    });
+
+    render(<MermaidBlock code={'graph LR; A["hello\\nworld"] --> B'} />);
+
+    await waitFor(() => {
+      expect(mermaid.render).toHaveBeenCalled();
+      const calls = vi.mocked(mermaid.render).mock.calls;
+      const renderedCode = calls[0]?.[1];
+      expect(renderedCode).toContain("hello<br/>world");
+      expect(renderedCode).not.toContain("hello\\nworld");
+    });
+  });
+
   it("fits very wide mermaid diagrams within markdown width", async () => {
     vi.mocked(mermaid.render).mockResolvedValue({
       svg: '<svg width="240" height="120">diagram</svg>',
