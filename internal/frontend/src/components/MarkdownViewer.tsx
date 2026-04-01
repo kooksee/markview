@@ -27,6 +27,23 @@ import "github-markdown-css/github-markdown.css";
 
 let svgbobModulePromise: Promise<{ loadWASM: () => Promise<void>; render: (ascii: string) => string }> | null = null;
 
+async function renderPlantUml(code: string): Promise<string> {
+  const response = await fetch("https://kroki.io/plantuml/svg", {
+    method: "POST",
+    headers: {
+      "Content-Type": "text/plain; charset=utf-8",
+      Accept: "image/svg+xml",
+    },
+    body: code,
+  });
+
+  if (!response.ok) {
+    throw new Error(`PlantUML render failed with status ${response.status}`);
+  }
+
+  return response.text();
+}
+
 async function renderSvgBob(ascii: string): Promise<string> {
   if (!svgbobModulePromise) {
     svgbobModulePromise = import("bob-wasm").then((module) => module.default);
@@ -808,6 +825,209 @@ export function SvgBobBlock({ code }: { code: string }) {
   );
 }
 
+export function PlantUmlBlock({ code }: { code: string }) {
+  const [svgUrl, setSvgUrl] = useState<string | null>(null);
+  const [renderStatus, setRenderStatus] = useState<"pending" | "rendered" | "failed">("pending");
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [zoom, setZoom] = useState(1);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const blockRef = useRef<HTMLDivElement>(null);
+  const panStartRef = useRef<{ x: number; y: number; panX: number; panY: number } | null>(null);
+  const objectUrlRef = useRef<string | null>(null);
+
+  const clampZoom = useCallback(
+    (nextZoom: number) => Math.max(MERMAID_MIN_ZOOM, Math.min(MERMAID_MAX_ZOOM, nextZoom)),
+    [],
+  );
+
+  const updateZoom = useCallback(
+    (delta: number) => {
+      setZoom((prev) => clampZoom(prev + delta));
+    },
+    [clampZoom],
+  );
+
+  const resetView = useCallback(() => {
+    setZoom(isFullscreen ? 1.2 : 1);
+    setPan({ x: 0, y: 0 });
+  }, [isFullscreen]);
+
+  const handleFullscreenToggle = useCallback(async () => {
+    const block = blockRef.current;
+    if (!block) return;
+
+    try {
+      if (document.fullscreenElement === block) {
+        await document.exitFullscreen?.();
+        return;
+      }
+      await block.requestFullscreen?.();
+    } catch {
+      // ignore fullscreen API failures
+    }
+  }, []);
+
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      const next = document.fullscreenElement === blockRef.current;
+      setIsFullscreen(next);
+      setZoom(next ? 1.2 : 1);
+      setPan({ x: 0, y: 0 });
+    };
+
+    document.addEventListener("fullscreenchange", handleFullscreenChange);
+    return () => document.removeEventListener("fullscreenchange", handleFullscreenChange);
+  }, []);
+
+  const handleSurfaceWheel = useCallback(
+    (e: React.WheelEvent<HTMLDivElement>) => {
+      if (!isFullscreen) return;
+      e.preventDefault();
+      updateZoom(e.deltaY > 0 ? -MERMAID_ZOOM_STEP : MERMAID_ZOOM_STEP);
+    },
+    [isFullscreen, updateZoom],
+  );
+
+  const handleSurfaceMouseDown = useCallback(
+    (e: React.MouseEvent<HTMLDivElement>) => {
+      if (!isFullscreen || e.button !== 0) return;
+      e.preventDefault();
+      panStartRef.current = { x: e.clientX, y: e.clientY, panX: pan.x, panY: pan.y };
+    },
+    [isFullscreen, pan.x, pan.y],
+  );
+
+  const handleSurfaceMouseMove = useCallback(
+    (e: React.MouseEvent<HTMLDivElement>) => {
+      if (!isFullscreen || !panStartRef.current) return;
+      const dx = e.clientX - panStartRef.current.x;
+      const dy = e.clientY - panStartRef.current.y;
+      setPan({ x: panStartRef.current.panX + dx, y: panStartRef.current.panY + dy });
+    },
+    [isFullscreen],
+  );
+
+  const handleSurfaceMouseUp = useCallback(() => {
+    panStartRef.current = null;
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const doRender = async () => {
+      setRenderStatus("pending");
+      try {
+        const svg = await renderPlantUml(code);
+        const nextUrl = URL.createObjectURL(new Blob([svg], { type: "image/svg+xml;charset=utf-8" }));
+
+        if (!cancelled) {
+          if (objectUrlRef.current) {
+            URL.revokeObjectURL(objectUrlRef.current);
+          }
+          objectUrlRef.current = nextUrl;
+          setSvgUrl(nextUrl);
+          setRenderStatus("rendered");
+        } else {
+          URL.revokeObjectURL(nextUrl);
+        }
+      } catch {
+        if (!cancelled) {
+          if (objectUrlRef.current) {
+            URL.revokeObjectURL(objectUrlRef.current);
+            objectUrlRef.current = null;
+          }
+          setSvgUrl(null);
+          setRenderStatus("failed");
+        }
+      }
+    };
+
+    void doRender();
+
+    return () => {
+      cancelled = true;
+      if (objectUrlRef.current) {
+        URL.revokeObjectURL(objectUrlRef.current);
+        objectUrlRef.current = null;
+      }
+    };
+  }, [code]);
+
+  if (svgUrl) {
+    const canvasStyle = isFullscreen
+      ? {
+        transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
+        transformOrigin: "center center",
+      }
+      : {
+        transformOrigin: "top left",
+      };
+
+    return (
+      <div ref={blockRef} className="relative group plantuml-block" data-plantuml-render-status={renderStatus}>
+        <div
+          className={`plantuml-render ${isFullscreen ? "plantuml-render--interactive cursor-grab active:cursor-grabbing select-none" : ""}`}
+          data-testid="plantuml-interaction-surface"
+          onWheel={handleSurfaceWheel}
+          onMouseDown={handleSurfaceMouseDown}
+          onMouseMove={handleSurfaceMouseMove}
+          onMouseUp={handleSurfaceMouseUp}
+          onMouseLeave={handleSurfaceMouseUp}
+        >
+          <div className="plantuml-canvas" data-testid="plantuml-pan-canvas" style={canvasStyle}>
+            <img src={svgUrl} alt="PlantUML diagram" className="plantuml-image" loading="lazy" />
+          </div>
+        </div>
+        {isFullscreen && (
+          <MermaidZoomControls
+            zoom={zoom}
+            onZoomIn={() => updateZoom(MERMAID_ZOOM_STEP)}
+            onZoomOut={() => updateZoom(-MERMAID_ZOOM_STEP)}
+            onReset={resetView}
+          />
+        )}
+        <PlantUmlFullscreenButton isFullscreen={isFullscreen} onToggle={() => void handleFullscreenToggle()} />
+        <CodeBlockCopyButton code={code} themed />
+      </div>
+    );
+  }
+
+  return (
+    <div className="relative group" data-plantuml-render-status={renderStatus}>
+      <pre>
+        <code>{code}</code>
+      </pre>
+      <CodeBlockCopyButton code={code} />
+    </div>
+  );
+}
+
+function PlantUmlFullscreenButton({
+  isFullscreen,
+  onToggle,
+}: {
+  isFullscreen: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <button
+      className={`absolute right-10 top-2 flex items-center justify-center rounded-md p-1 cursor-pointer transition-all duration-150 border ${themedButtonStyle} ${isFullscreen ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}
+      onClick={onToggle}
+      title={isFullscreen ? "Exit fullscreen" : "Fullscreen"}
+    >
+      {isFullscreen ? (
+        <svg className="size-4" viewBox="0 0 16 16" fill="currentColor">
+          <path d="M6 2a.75.75 0 0 1 0 1.5H3.5V6a.75.75 0 0 1-1.5 0V2zm10 0v4a.75.75 0 0 1-1.5 0V3.5H10A.75.75 0 0 1 10 2zM2 10a.75.75 0 0 1 1.5 0v2.5H6a.75.75 0 0 1 0 1.5H2zm13.25-.75A.75.75 0 0 1 16 10v4h-4a.75.75 0 0 1 0-1.5h2.5V10a.75.75 0 0 1 .75-.75" />
+        </svg>
+      ) : (
+        <svg className="size-4" viewBox="0 0 16 16" fill="currentColor">
+          <path d="M2.75 1A.75.75 0 0 1 3.5 1.75V4.5h2.75a.75.75 0 0 1 0 1.5H2V1.75A.75.75 0 0 1 2.75 1m10.5 0a.75.75 0 0 1 .75.75V6h-4.25a.75.75 0 0 1 0-1.5H12.5V1.75a.75.75 0 0 1 .75-.75M2 10h4.25a.75.75 0 0 1 0 1.5H3.5v2.75a.75.75 0 0 1-1.5 0zm12 0v4.25a.75.75 0 0 1-1.5 0V11.5H9.75a.75.75 0 0 1 0-1.5z" />
+        </svg>
+      )}
+    </button>
+  );
+}
+
 function SvgBobFullscreenButton({
   isFullscreen,
   onToggle,
@@ -1221,6 +1441,9 @@ export function MarkdownViewer({
           }
           if (language === "svgbob" || language === "bob") {
             return <SvgBobBlock code={code} />;
+          }
+          if (language === "plantuml" || language === "puml") {
+            return <PlantUmlBlock code={code} />;
           }
           return <CodeBlock language={language} code={code} />;
         }
