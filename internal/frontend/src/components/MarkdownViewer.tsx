@@ -1,5 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo } from "react";
 import Markdown from "react-markdown";
+import remarkBreaks from "remark-breaks";
+import remarkGemoji from "remark-gemoji";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import rehypeRaw from "rehype-raw";
@@ -423,7 +425,17 @@ export function MermaidBlock({ code }: { code: string }) {
     const doRender = async () => {
       const width = resolveRenderWidth();
       setRenderStatus("pending");
-      mermaid.initialize({ startOnLoad: false, theme: getMermaidTheme() });
+      mermaid.initialize({
+        startOnLoad: false,
+        theme: getMermaidTheme(),
+        flowchart: {
+          htmlLabels: true,
+          useMaxWidth: false,
+        },
+        sequence: {
+          useMaxWidth: false,
+        },
+      });
       try {
         let renderedSvg = await renderMermaid(code, width);
         let dimensions = parseMermaidSvgDimensions(renderedSvg);
@@ -990,7 +1002,7 @@ export function MarkdownViewer({
       <>
         {parsed && <FrontmatterBlock yaml={parsed.yaml} />}
         <Markdown
-          remarkPlugins={[remarkGfm, remarkMath]}
+          remarkPlugins={[remarkGfm, remarkMath, remarkBreaks, remarkGemoji]}
           rehypePlugins={[rehypeRaw, rehypeGithubAlerts, rehypeSlug, rehypeKatex]}
           components={components}
         >
