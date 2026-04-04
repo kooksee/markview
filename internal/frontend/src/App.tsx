@@ -462,6 +462,7 @@ export function App() {
                 isTocOpen={tocOpen}
                 onTocToggle={() => setTocOpen(!tocOpen)}
                 onRemoveFile={handleRemoveFile}
+                uploaded={activeFile?.uploaded}
                 isWide={isWide}
                 onZoom={handleZoom}
                 scrollToHeading={pendingSearchHeading}

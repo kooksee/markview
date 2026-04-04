@@ -70,6 +70,7 @@ interface MarkdownViewerProps {
   isTocOpen: boolean;
   onTocToggle: () => void;
   onRemoveFile: () => void;
+  uploaded?: boolean;
   isWide: boolean;
   onZoom?: (content: ZoomContent) => void;
   scrollToHeading?: string | null;
@@ -528,6 +529,7 @@ export function MarkdownViewer({
   isTocOpen,
   onTocToggle,
   onRemoveFile,
+  uploaded,
   isWide,
   onZoom,
   scrollToHeading,
@@ -819,7 +821,7 @@ export function MarkdownViewer({
         {isMarkdown && <TocToggle isTocOpen={isTocOpen} onToggle={onTocToggle} />}
         {isMarkdown && <RawToggle isRaw={isRawView} onToggle={() => setIsRawView((v) => !v)} />}
         <CopyButton content={content} />
-        <CloseFileButton onClose={onRemoveFile} />
+        <CloseFileButton onClose={onRemoveFile} uploaded={uploaded} />
       </div>
     </div>
   );
