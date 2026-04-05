@@ -1,5 +1,7 @@
 # Changelog
 
+## [v1.0.0](https://github.com/k1LoW/mo/compare/v0.23.4...v1.0.0) - 2026-04-05
+
 ## [v0.23.4](https://github.com/k1LoW/mo/compare/v0.23.3...v0.23.4) - 2026-04-04
 ### New Features 🎉
 - feat: use distinct icons for Close file and Discard actions by @k1LoW in https://github.com/k1LoW/mo/pull/161
