@@ -11,7 +11,6 @@ import { rehypeGithubAlerts } from "rehype-github-alerts";
 import "katex/dist/katex.min.css";
 import { codeToHtml } from "shiki";
 import mermaid from "mermaid";
-import { renderMermaidSVG } from "beautiful-mermaid";
 import { fetchFileContent, openRelativeFile } from "../hooks/useApi";
 import { RawToggle } from "./RawToggle";
 import { TocToggle } from "./TocToggle";
@@ -320,9 +319,22 @@ function supportsBeautifulMermaid(code: string): boolean {
   return false;
 }
 
-function renderBeautifulMermaid(code: string): string {
+type RenderMermaidSVGFn = (text: string, options?: Record<string, unknown>) => string;
+
+let beautifulMermaidRenderPromise: Promise<RenderMermaidSVGFn | null> | null = null;
+
+async function loadBeautifulMermaidRender(): Promise<RenderMermaidSVGFn | null> {
+  if (!beautifulMermaidRenderPromise) {
+    beautifulMermaidRenderPromise = import("beautiful-mermaid")
+      .then((mod) => mod.renderMermaidSVG ?? null)
+      .catch(() => null);
+  }
+  return beautifulMermaidRenderPromise;
+}
+
+function renderBeautifulMermaid(code: string, renderFn: RenderMermaidSVGFn): string {
   const isDark = getMermaidTheme() === "dark";
-  return renderMermaidSVG(code, {
+  return renderFn(code, {
     bg: "var(--color-gh-bg)",
     fg: "var(--color-gh-text)",
     line: "var(--color-gh-border)",
@@ -597,7 +609,9 @@ export function MermaidBlock({ code }: { code: string }) {
 
         if (canUseBeautiful) {
           try {
-            renderedSvg = renderBeautifulMermaid(normalizedCode);
+            const renderBeautiful = await loadBeautifulMermaidRender();
+            if (!renderBeautiful) throw new Error("beautiful-mermaid unavailable");
+            renderedSvg = renderBeautifulMermaid(normalizedCode, renderBeautiful);
           } catch {
             mermaid.initialize({
               startOnLoad: false,
