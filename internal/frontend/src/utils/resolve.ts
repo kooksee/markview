@@ -1,3 +1,5 @@
+import { isStaticMode, getStaticRawAssetUrl } from "./staticData";
+
 export type LinkResolution =
   | { type: "external" }
   | { type: "hash" }
@@ -34,6 +36,10 @@ export function resolveLink(href: string | undefined, fileId: string): LinkResol
 
 export function resolveImageSrc(src: string | undefined, fileId: string): string | undefined {
   if (src && !src.startsWith("http://") && !src.startsWith("https://")) {
+    if (isStaticMode()) {
+      const dataUri = getStaticRawAssetUrl(fileId, src);
+      if (dataUri) return dataUri;
+    }
     return `/_/api/files/${fileId}/raw/${src}`;
   }
   return src;

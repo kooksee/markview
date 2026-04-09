@@ -23,10 +23,10 @@ export function StaticExportButton({ groupName }: StaticExportButtonProps) {
     return (
         <button
             type="button"
-            className="flex items-center justify-center bg-transparent border border-gh-border rounded-md p-1.5 text-gh-text-secondary cursor-pointer transition-colors duration-150 hover:bg-gh-bg-hover disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex items-center justify-center bg-transparent border border-gh-border rounded-md p-1.5 text-gh-header-text cursor-pointer transition-colors duration-150 hover:bg-gh-bg-hover disabled:opacity-50 disabled:cursor-not-allowed"
             onClick={handleExport}
             disabled={exporting}
-            title="导出静态站点 (ZIP)"
+            title={exporting ? "正在导出静态站点..." : "导出静态站点 (ZIP)"}
             aria-label="Export static site"
         >
             {exporting ? (
