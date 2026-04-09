@@ -606,6 +606,7 @@ export function App() {
             onFileSelect={setActiveFileId}
             onFilesReorder={handleFilesReorder}
             viewMode={currentViewMode}
+            readOnly={isStaticMode()}
             searchQuery={searchQuery}
             onSearchQueryChange={setSearchQuery}
           />
@@ -658,7 +659,7 @@ export function App() {
       />
       <SettingsModal isOpen={settingsOpen} onClose={() => setSettingsOpen(false)} />
       {!isStaticMode() && <RestartButton />}
-      {isDragging && <DropOverlay />}
+      {!isStaticMode() && isDragging && <DropOverlay />}
     </div>
   );
 }

@@ -88,11 +88,62 @@ func BuildStaticSite(inputDir, outputDir string) error {
 		})
 	}
 
-	groupName := "default"
-	group := server.Group{
-		Name:  groupName,
-		Files: entries,
+	return buildAndWrite(entries, outputDir)
+}
+
+// BuildStaticSiteFromFiles builds a static site from explicit file paths.
+func BuildStaticSiteFromFiles(filePaths []string, outputDir string) error {
+	if len(filePaths) == 0 {
+		return fmt.Errorf("no files specified")
 	}
+
+	// Find common directory for relative path calculation
+	absPaths := make([]string, 0, len(filePaths))
+	for _, f := range filePaths {
+		abs, err := filepath.Abs(f)
+		if err != nil {
+			return fmt.Errorf("cannot resolve path %s: %w", f, err)
+		}
+		absPaths = append(absPaths, abs)
+	}
+
+	commonDir := filepath.Dir(absPaths[0])
+	for _, p := range absPaths[1:] {
+		commonDir = commonPrefix(commonDir, filepath.Dir(p))
+	}
+
+	entries := make([]*server.FileEntry, 0, len(absPaths))
+	for _, abs := range absPaths {
+		rel, _ := filepath.Rel(commonDir, abs)
+		entries = append(entries, &server.FileEntry{
+			Name: rel,
+			ID:   server.FileID(abs),
+			Path: abs,
+		})
+	}
+
+	return buildAndWrite(entries, outputDir)
+}
+
+// commonPrefix returns the longest common directory prefix of two paths.
+func commonPrefix(a, b string) string {
+	aParts := strings.Split(filepath.ToSlash(a), "/")
+	bParts := strings.Split(filepath.ToSlash(b), "/")
+	n := len(aParts)
+	if len(bParts) < n {
+		n = len(bParts)
+	}
+	var common []string
+	for i := 0; i < n; i++ {
+		if aParts[i] != bParts[i] {
+			break
+		}
+		common = append(common, aParts[i])
+	}
+	return filepath.FromSlash(strings.Join(common, "/"))
+}
+
+func buildAndWrite(entries []*server.FileEntry, outputDir string) error {
 
 	// Read file contents and collect raw assets
 	contents := make(map[string]staticFileContent, len(entries))
@@ -119,8 +170,8 @@ func BuildStaticSite(inputDir, outputDir string) error {
 	outline := buildOutline(entries, contents)
 
 	// Export group uses relative paths only
-	exportGroup := server.Group{Name: group.Name}
-	for _, f := range group.Files {
+	exportGroup := server.Group{Name: "default"}
+	for _, f := range entries {
 		exportGroup.Files = append(exportGroup.Files, &server.FileEntry{
 			Name: f.Name,
 			ID:   f.ID,
