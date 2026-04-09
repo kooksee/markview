@@ -12,7 +12,7 @@ import "katex/dist/katex.min.css";
 import { codeToHtml } from "shiki";
 import mermaid from "mermaid";
 import { fetchFileContent, openRelativeFile } from "../hooks/useApi";
-import { getMermaidSettings, type MermaidSettings } from "../hooks/useMermaidSettings";
+import { getMermaidSettings, useMermaidSettingsRevision, type MermaidSettings } from "../hooks/useMermaidSettings";
 import { RawToggle } from "./RawToggle";
 import { TocToggle } from "./TocToggle";
 import { CopyButton } from "./CopyButton";
@@ -333,7 +333,7 @@ async function loadBeautifulMermaidRender(): Promise<RenderMermaidSVGFn | null> 
   return beautifulMermaidRenderPromise;
 }
 
-const GITHUB_THEMES: Record<string, Record<string, string>> = {
+const BEAUTIFUL_MERMAID_PALETTES: Record<string, Record<string, string>> = {
   "github-light": {
     bg: "#ffffff",
     fg: "#1f2328",
@@ -352,35 +352,99 @@ const GITHUB_THEMES: Record<string, Record<string, string>> = {
     surface: "#161b22",
     border: "#30363d",
   },
+  "high-contrast-light": {
+    bg: "#ffffff",
+    fg: "#0a0a0a",
+    line: "#1a1a2e",
+    accent: "#0550ae",
+    muted: "#3d3d5c",
+    surface: "#e8f0fe",
+    border: "#1a1a2e",
+  },
+  "high-contrast-dark": {
+    bg: "#0a0e1a",
+    fg: "#f0f4ff",
+    line: "#a0b4d0",
+    accent: "#58a6ff",
+    muted: "#8ea4c0",
+    surface: "#111928",
+    border: "#58a6ff",
+  },
+  "tokyo-night-light": {
+    bg: "#d5d6db",
+    fg: "#343b58",
+    line: "#4c5580",
+    accent: "#34548a",
+    muted: "#68709a",
+    surface: "#cbced8",
+    border: "#4c5580",
+  },
+  "tokyo-night-dark": {
+    bg: "#1a1b26",
+    fg: "#c0caf5",
+    line: "#565f89",
+    accent: "#7aa2f7",
+    muted: "#787c99",
+    surface: "#24283b",
+    border: "#414868",
+  },
+  "nord-light": {
+    bg: "#eceff4",
+    fg: "#2e3440",
+    line: "#4c566a",
+    accent: "#5e81ac",
+    muted: "#7b88a1",
+    surface: "#e5e9f0",
+    border: "#4c566a",
+  },
+  "nord-dark": {
+    bg: "#2e3440",
+    fg: "#d8dee9",
+    line: "#81a1c1",
+    accent: "#88c0d0",
+    muted: "#a3b8cc",
+    surface: "#3b4252",
+    border: "#4c566a",
+  },
+  "custom-light": {
+    bg: "#ffffff",
+    fg: "#0f172a",
+    line: "#1e3a5f",
+    accent: "#0044cc",
+    muted: "#374151",
+    surface: "#e0ecff",
+    border: "#1e3a5f",
+  },
+  "custom-dark": {
+    bg: "#0b1220",
+    fg: "#f0f6ff",
+    line: "#7da2cc",
+    accent: "#4ea1ff",
+    muted: "#94b0d0",
+    surface: "#111a2b",
+    border: "#5b8abf",
+  },
 };
 
 function resolveBeautifulMermaidPalette(settings: MermaidSettings): Record<string, string> {
   const isDark = getMermaidTheme() === "dark";
 
-  if (settings.theme === "github-light") return GITHUB_THEMES["github-light"];
-  if (settings.theme === "github-dark") return GITHUB_THEMES["github-dark"];
-  if (settings.theme === "auto") return isDark ? GITHUB_THEMES["github-dark"] : GITHUB_THEMES["github-light"];
-
-  // "custom" — original hand-tuned palette
-  return isDark
-    ? {
-      bg: "#0b1220",
-      fg: "#f0f6ff",
-      line: "#9fb3d1",
-      accent: "#4ea1ff",
-      muted: "#b5c5dd",
-      surface: "#111a2b",
-      border: "#7f9bc3",
-    }
-    : {
-      bg: "#ffffff",
-      fg: "#111827",
-      line: "#334155",
-      accent: "#0057d8",
-      muted: "#475569",
-      surface: "#eef4ff",
-      border: "#2f4f7f",
-    };
+  switch (settings.theme) {
+    case "github-light":
+      return BEAUTIFUL_MERMAID_PALETTES["github-light"];
+    case "github-dark":
+      return BEAUTIFUL_MERMAID_PALETTES["github-dark"];
+    case "tokyo-night":
+      return isDark ? BEAUTIFUL_MERMAID_PALETTES["tokyo-night-dark"] : BEAUTIFUL_MERMAID_PALETTES["tokyo-night-light"];
+    case "nord":
+      return isDark ? BEAUTIFUL_MERMAID_PALETTES["nord-dark"] : BEAUTIFUL_MERMAID_PALETTES["nord-light"];
+    case "high-contrast":
+      return isDark ? BEAUTIFUL_MERMAID_PALETTES["high-contrast-dark"] : BEAUTIFUL_MERMAID_PALETTES["high-contrast-light"];
+    case "auto":
+      return isDark ? BEAUTIFUL_MERMAID_PALETTES["github-dark"] : BEAUTIFUL_MERMAID_PALETTES["github-light"];
+    default: // "custom"
+      return isDark ? BEAUTIFUL_MERMAID_PALETTES["custom-dark"] : BEAUTIFUL_MERMAID_PALETTES["custom-light"];
+  }
 }
 
 function renderBeautifulMermaid(code: string, renderFn: RenderMermaidSVGFn): string {
@@ -517,6 +581,7 @@ async function renderMermaid(code: string, width?: number): Promise<string> {
 }
 
 export function MermaidBlock({ code }: { code: string }) {
+  const settingsRevision = useMermaidSettingsRevision();
   const [svg, setSvg] = useState("");
   const [renderStatus, setRenderStatus] = useState<"pending" | "rendered" | "failed">("pending");
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -733,7 +798,7 @@ export function MermaidBlock({ code }: { code: string }) {
       observer.disconnect();
       resizeObserver?.disconnect();
     };
-  }, [isFullscreen, mermaidComplexity, normalizedCode, resolveRenderWidth]);
+  }, [isFullscreen, mermaidComplexity, normalizedCode, resolveRenderWidth, settingsRevision]);
 
   if (svg) {
     const canvasStyle = isFullscreen
@@ -1766,7 +1831,7 @@ export function MarkdownViewer({
       >
         {renderedContent}
       </article>
-      <div className="shrink-0 flex flex-col gap-2 -mr-4 -mt-4">
+      <div className="shrink-0 sticky top-0 self-start flex flex-col gap-2 -mr-4 -mt-4">
         <TocToggle isTocOpen={isTocOpen} onToggle={onTocToggle} />
         <RawToggle isRaw={isRawView} onToggle={() => setIsRawView((v) => !v)} />
         <CopyButton content={content} />

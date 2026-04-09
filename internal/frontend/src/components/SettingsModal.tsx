@@ -1,5 +1,11 @@
-import { useCallback } from "react";
-import { useMermaidSettings, MERMAID_SETTINGS_DEFAULTS, type MermaidSettings } from "../hooks/useMermaidSettings";
+import { useCallback, useState } from "react";
+import {
+    useMermaidSettings,
+    MERMAID_SETTINGS_DEFAULTS,
+    MERMAID_PRESETS,
+    bumpSettingsRevision,
+    type MermaidSettings,
+} from "../hooks/useMermaidSettings";
 
 interface SettingsModalProps {
     isOpen: boolean;
@@ -7,10 +13,13 @@ interface SettingsModalProps {
 }
 
 const THEME_OPTIONS: Array<{ value: MermaidSettings["theme"]; label: string }> = [
-    { value: "custom", label: "自定义 (跟随 mo 主题)" },
-    { value: "auto", label: "Auto (github-light / github-dark)" },
+    { value: "auto", label: "Auto (跟随亮/暗主题)" },
+    { value: "high-contrast", label: "高对比 (推荐)" },
+    { value: "custom", label: "自定义 Mo 调色" },
     { value: "github-light", label: "GitHub Light" },
     { value: "github-dark", label: "GitHub Dark" },
+    { value: "tokyo-night", label: "Tokyo Night" },
+    { value: "nord", label: "Nord" },
 ];
 
 interface SliderRowProps {
@@ -26,7 +35,7 @@ interface SliderRowProps {
 function SliderRow({ label, value, min, max, step, defaultValue, onChange }: SliderRowProps) {
     return (
         <label className="flex items-center gap-3">
-            <span className="w-32 shrink-0 text-sm text-gh-text-secondary">{label}</span>
+            <span className="w-28 shrink-0 text-sm text-gh-text-secondary">{label}</span>
             <input
                 type="range"
                 className="flex-1 accent-gh-accent"
@@ -55,12 +64,32 @@ function SliderRow({ label, value, min, max, step, defaultValue, onChange }: Sli
 
 export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     const [settings, update, reset] = useMermaidSettings();
+    const [dirty, setDirty] = useState(false);
+
+    const handleUpdate = useCallback(
+        (patch: Partial<MermaidSettings>) => {
+            update(patch);
+            setDirty(true);
+        },
+        [update],
+    );
+
+    const handleApply = useCallback(() => {
+        bumpSettingsRevision();
+        setDirty(false);
+    }, []);
+
+    const handleApplyAndClose = useCallback(() => {
+        if (dirty) bumpSettingsRevision();
+        setDirty(false);
+        onClose();
+    }, [dirty, onClose]);
 
     const handleKeyDown = useCallback(
         (e: React.KeyboardEvent) => {
-            if (e.key === "Escape") onClose();
+            if (e.key === "Escape") handleApplyAndClose();
         },
-        [onClose],
+        [handleApplyAndClose],
     );
 
     if (!isOpen) return null;
@@ -68,14 +97,14 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     return (
         <div
             className="fixed inset-0 z-50 flex items-start justify-center bg-gh-bg/75 p-4 md:p-8"
-            onClick={onClose}
+            onClick={handleApplyAndClose}
             onKeyDown={handleKeyDown}
             role="dialog"
             aria-modal
             aria-label="设置"
         >
             <div
-                className="w-full max-w-lg mt-16 bg-gh-bg-secondary border border-gh-border rounded-xl shadow-xl overflow-hidden"
+                className="w-full max-w-xl mt-12 bg-gh-bg-secondary border border-gh-border rounded-xl shadow-xl overflow-hidden"
                 onClick={(e) => e.stopPropagation()}
             >
                 {/* Header */}
@@ -84,7 +113,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     <button
                         type="button"
                         className="text-gh-text-secondary hover:text-gh-text cursor-pointer p-1"
-                        onClick={onClose}
+                        onClick={handleApplyAndClose}
                         aria-label="关闭"
                     >
                         <svg className="size-5" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
@@ -94,14 +123,37 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                 </div>
 
                 {/* Body */}
-                <div className="p-4 space-y-4">
+                <div className="p-4 space-y-4 max-h-[70vh] overflow-y-auto">
+                    {/* Presets */}
+                    <div>
+                        <div className="text-sm font-medium text-gh-text mb-2">快速选配</div>
+                        <div className="grid grid-cols-2 gap-2">
+                            {MERMAID_PRESETS.map((preset) => (
+                                <button
+                                    key={preset.key}
+                                    type="button"
+                                    className={`text-left px-3 py-2 rounded-lg border cursor-pointer transition-colors ${settings.preset === preset.key
+                                            ? "border-gh-accent bg-gh-accent/10 text-gh-text"
+                                            : "border-gh-border bg-gh-bg hover:bg-gh-bg-hover text-gh-text-secondary hover:text-gh-text"
+                                        }`}
+                                    onClick={() => handleUpdate({ ...preset.settings, preset: preset.key })}
+                                >
+                                    <div className="text-sm font-medium">{preset.label}</div>
+                                    <div className="text-xs opacity-70">{preset.description}</div>
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+
+                    <hr className="border-gh-border" />
+
                     {/* Theme selector */}
                     <label className="flex items-center gap-3">
-                        <span className="w-32 shrink-0 text-sm text-gh-text-secondary">配色方案</span>
+                        <span className="w-28 shrink-0 text-sm text-gh-text-secondary">配色方案</span>
                         <select
                             className="flex-1 bg-gh-bg border border-gh-border rounded-md px-2 py-1 text-sm text-gh-text focus:border-gh-accent outline-none"
                             value={settings.theme}
-                            onChange={(e) => update({ theme: e.target.value as MermaidSettings["theme"] })}
+                            onChange={(e) => handleUpdate({ theme: e.target.value as MermaidSettings["theme"], preset: "custom-manual" })}
                         >
                             {THEME_OPTIONS.map((opt) => (
                                 <option key={opt.value} value={opt.value}>
@@ -121,7 +173,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                         max={80}
                         step={4}
                         defaultValue={MERMAID_SETTINGS_DEFAULTS.nodeSpacing}
-                        onChange={(v) => update({ nodeSpacing: v })}
+                        onChange={(v) => handleUpdate({ nodeSpacing: v, preset: "custom-manual" })}
                     />
                     <SliderRow
                         label="层间距"
@@ -130,7 +182,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                         max={120}
                         step={4}
                         defaultValue={MERMAID_SETTINGS_DEFAULTS.layerSpacing}
-                        onChange={(v) => update({ layerSpacing: v })}
+                        onChange={(v) => handleUpdate({ layerSpacing: v, preset: "custom-manual" })}
                     />
                     <SliderRow
                         label="画布边距"
@@ -139,7 +191,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                         max={80}
                         step={4}
                         defaultValue={MERMAID_SETTINGS_DEFAULTS.padding}
-                        onChange={(v) => update({ padding: v })}
+                        onChange={(v) => handleUpdate({ padding: v, preset: "custom-manual" })}
                     />
                     <SliderRow
                         label="交叉优化"
@@ -148,30 +200,37 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                         max={7}
                         step={1}
                         defaultValue={MERMAID_SETTINGS_DEFAULTS.thoroughness}
-                        onChange={(v) => update({ thoroughness: v })}
+                        onChange={(v) => handleUpdate({ thoroughness: v, preset: "custom-manual" })}
                     />
-
-                    <p className="text-xs text-gh-text-secondary">
-                        交叉优化值越大，线条越整齐，但渲染速度越慢。修改后需刷新页面或重新切换文件生效。
-                    </p>
                 </div>
 
                 {/* Footer */}
-                <div className="flex items-center justify-end gap-2 px-4 py-3 border-t border-gh-border">
+                <div className="flex items-center justify-between px-4 py-3 border-t border-gh-border">
                     <button
                         type="button"
                         className="text-sm text-gh-text-secondary hover:text-gh-text cursor-pointer px-3 py-1.5 rounded-md hover:bg-gh-bg-hover transition-colors"
-                        onClick={reset}
+                        onClick={() => {
+                            reset();
+                            setDirty(true);
+                        }}
                     >
                         全部重置
                     </button>
-                    <button
-                        type="button"
-                        className="text-sm text-gh-header-text bg-gh-accent hover:bg-gh-accent/90 cursor-pointer px-3 py-1.5 rounded-md transition-colors"
-                        onClick={onClose}
-                    >
-                        完成
-                    </button>
+                    <div className="flex items-center gap-2">
+                        <button
+                            type="button"
+                            className={`text-sm cursor-pointer px-4 py-1.5 rounded-md transition-colors flex items-center gap-1.5 ${dirty
+                                    ? "text-white bg-green-600 hover:bg-green-700"
+                                    : "text-gh-text-secondary bg-gh-bg border border-gh-border hover:bg-gh-bg-hover"
+                                }`}
+                            onClick={handleApply}
+                        >
+                            <svg className="size-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182" />
+                            </svg>
+                            {dirty ? "应用刷新" : "刷新图表"}
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>

@@ -57,6 +57,10 @@ export const MERMAID_PRESETS: MermaidPreset[] = [
 let listeners: Array<() => void> = [];
 let cachedSettings: MermaidSettings | null = null;
 
+// Global revision counter — incremented when user clicks "apply"
+let settingsRevision = 0;
+let revisionListeners: Array<() => void> = [];
+
 function readFromStorage(): MermaidSettings {
     if (cachedSettings) return cachedSettings;
     try {
@@ -114,4 +118,26 @@ export function getMermaidSettings(): MermaidSettings {
 export function invalidateMermaidSettingsCache() {
     cachedSettings = null;
     for (const listener of listeners) listener();
+}
+
+/** Bump the global settings revision — triggers all MermaidBlock re-renders */
+export function bumpSettingsRevision() {
+    settingsRevision += 1;
+    for (const listener of revisionListeners) listener();
+}
+
+function subscribeRevision(listener: () => void) {
+    revisionListeners = [...revisionListeners, listener];
+    return () => {
+        revisionListeners = revisionListeners.filter((l) => l !== listener);
+    };
+}
+
+function getRevisionSnapshot(): number {
+    return settingsRevision;
+}
+
+/** Subscribe to settings revision changes (for triggering re-renders) */
+export function useMermaidSettingsRevision(): number {
+    return useSyncExternalStore(subscribeRevision, getRevisionSnapshot);
 }
