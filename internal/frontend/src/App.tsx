@@ -305,7 +305,8 @@ export function App() {
   }, [activeGroup]);
 
   const handleSearchToggle = useCallback(() => {
-    setSearchQuery((prev) => (prev != null ? null : ""));
+    setShowGraph(false);
+    setGlobalSearchOpen(true);
   }, []);
 
   const handleGlobalSearchSelect = useCallback((groupName: string, fileId: string) => {
@@ -494,7 +495,7 @@ export function App() {
           onGroupChange={handleGroupChange}
         />
         <ViewModeToggle viewMode={currentViewMode} onToggle={handleViewModeToggle} />
-        <SearchToggle isOpen={searchQuery != null} onToggle={handleSearchToggle} />
+        <SearchToggle isOpen={globalSearchOpen} onToggle={handleSearchToggle} />
         <div className="ml-auto flex items-center gap-2">
           <button
             type="button"
