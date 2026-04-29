@@ -7,7 +7,7 @@ import path from "node:path";
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   build: {
-    outDir: "../static/dist",
+    outDir: "../internal/static/dist",
     emptyOutDir: true,
     chunkSizeWarningLimit: 600,
     rollupOptions: {

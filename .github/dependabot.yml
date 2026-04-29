@@ -36,7 +36,7 @@ updates:
       - "k1LoW"
 
   - package-ecosystem: "npm"
-    directory: "/internal/frontend"
+    directory: "/frontend"
     groups:
       dependencies:
         patterns:

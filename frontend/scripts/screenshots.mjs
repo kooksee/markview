@@ -4,7 +4,7 @@ import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const ROOT = resolve(__dirname, "../../..");
+const ROOT = resolve(__dirname, "../..");
 const PORT = 16275;
 const BASE = `http://localhost:${PORT}`;
 const IMAGES_DIR = resolve(ROOT, "images");

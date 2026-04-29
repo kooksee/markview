@@ -1,5 +1,5 @@
 internal/static/dist/**/*
-internal/frontend/CREDITS_FRONTEND
+frontend/CREDITS_FRONTEND
 coverage.out
 markview
 .pnpm-store/

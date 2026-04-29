@@ -6,7 +6,7 @@
 
 ## Build & Run
 
-Requires Go 1.26+ and [pnpm](https://pnpm.io/). Node.js version is managed via `pnpm.executionEnv.nodeVersion` in `internal/frontend/package.json`.
+Requires Go 1.26+ and [pnpm](https://pnpm.io/). Node.js version is managed via `pnpm.executionEnv.nodeVersion` in `frontend/package.json`.
 
 ```bash
 # Full build (frontend + Go binary, with ldflags)
@@ -25,7 +25,7 @@ make generate
 make test
 
 # Run a single frontend test (vitest)
-cd internal/frontend && pnpm test src/utils/buildTree.test.ts
+cd frontend && pnpm test src/utils/buildTree.test.ts
 
 # Run Go tests only
 go test ./...
@@ -52,7 +52,7 @@ make ci
 make install
 
 # Frontend dev server with backend proxy (proxies /_/ to localhost:6275)
-cd internal/frontend && pnpm run dev
+cd frontend && pnpm run dev
 ```
 
 **Workflow**: After making code changes, run `make install` to build and install the binary.
@@ -78,7 +78,7 @@ cd internal/frontend && pnpm run dev
 - `cmd/root.go` — CLI entry point (Cobra). Handles single-instance detection: if a server is already running on the port, adds files via HTTP API instead of starting a new one.
 - `internal/server/server.go` — HTTP server, state management (mutex-guarded), SSE for live-reload, file watcher (fsnotify). All API routes use `/_/` prefix to avoid collision with SPA route paths (group names).
 - `internal/static/static.go` — `go:generate` runs the frontend build, then `go:embed` embeds the output from `internal/static/dist/`.
-- `internal/frontend/` — Vite + React 19 + TypeScript + Tailwind CSS v4 SPA. Build output goes to `internal/static/dist/` (configured in `vite.config.ts`).
+- `frontend/` — Vite + React 19 + TypeScript + Tailwind CSS v4 SPA. Build output goes to `internal/static/dist/` (configured in `vite.config.ts`).
 - `internal/backup/` — State persistence for open files/groups using atomic JSON writes to `$XDG_STATE_HOME/markview/backup/`. Enables session restoration across server restarts.
 - `internal/logfile/` — Rotating JSON logging to `$XDG_STATE_HOME/markview/log/` (max 10MB, 3 backups, 7-day retention).
 - `internal/xdg/` — XDG Base Directory helper. `StateHome()` returns `$XDG_STATE_HOME` or default `~/.local/state`.
@@ -86,7 +86,7 @@ cd internal/frontend && pnpm run dev
 
 ## Frontend
 
-- Package manager: **pnpm** (version specified in `internal/frontend/package.json` `packageManager` field)
+- Package manager: **pnpm** (version specified in `frontend/package.json` `packageManager` field)
 - Markdown rendering: `react-markdown` + `remark-gfm` + `rehype-raw` + `rehype-slug` (heading IDs) + `@shikijs/rehype` (syntax highlighting) + `mermaid` (diagram rendering)
 - SPA routing via `window.location.pathname` (no router library)
 - Key components: `App.tsx` (routing/state), `Sidebar.tsx` (file list with flat/tree view, resizable, drag-and-drop reorder), `TreeView.tsx` (tree view with collapsible directories), `MarkdownViewer.tsx` (rendering + raw view toggle), `TocPanel.tsx` (table of contents, resizable), `GroupDropdown.tsx` (group switcher), `FileContextMenu.tsx` (shared kebab menu for file operations), `WidthToggle.tsx` (wide/narrow content width toggle)

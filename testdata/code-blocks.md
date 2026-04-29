@@ -57,8 +57,8 @@ async function fetchFiles(): Promise<FileEntry[]> {
 set -euo pipefail
 
 echo "Building markview..."
-cd internal/frontend && pnpm run build
-cd ../..
+cd frontend && pnpm run build
+cd ..
 go build -o markview .
 echo "Done!"
 ```
