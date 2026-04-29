@@ -12,9 +12,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/k1LoW/mo/internal/server"
-	"github.com/k1LoW/mo/internal/static"
-	"github.com/k1LoW/mo/version"
+	"github.com/kooksee/markview/internal/server"
+	"github.com/kooksee/markview/internal/static"
+	"github.com/kooksee/markview/version"
 )
 
 // staticFileContent holds a file's content for static export.

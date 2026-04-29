@@ -1,4 +1,4 @@
-module github.com/k1LoW/mo
+module github.com/kooksee/markview
 
 go 1.26.0
 

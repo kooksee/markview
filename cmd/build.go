@@ -5,7 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/k1LoW/mo/internal/build"
+	"github.com/kooksee/markview/internal/build"
 	"github.com/spf13/cobra"
 )
 
