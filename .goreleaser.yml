@@ -67,7 +67,7 @@ nfpms:
     ids:
       - markview-linux
     homepage: https://github.com/kooksee/markview
-    maintainer: Ken'ichiro Oyama <k1lowxb@gmail.com>
+    maintainer: barry <kooksee@163.com>
     description: "markview is a Markdown viewer that opens .md files in a browser"
     license: MIT
     formats:
@@ -75,6 +75,6 @@ nfpms:
       - rpm
       - apk
     bindir: /usr/bin
-    epoch: 1
+    epoch: "1"
 release:
   use_existing_draft: true
