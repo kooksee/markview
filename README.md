@@ -1,14 +1,16 @@
 <p align="center">
 <br><br><br>
-<img src="https://github.com/kooksee/markview/raw/main/images/logo.svg" width="120" alt="mo">
+<img src="https://github.com/kooksee/markview/raw/main/images/logo.svg" width="120" alt="markview">
 <br><br><br>
 </p>
 
-# mo
+# markview
 
 [![build](https://github.com/kooksee/markview/actions/workflows/ci.yml/badge.svg)](https://github.com/kooksee/markview/actions/workflows/ci.yml) ![Coverage](https://raw.githubusercontent.com/k1LoW/octocovs/main/badges/kooksee/markview/coverage.svg) ![Code to Test Ratio](https://raw.githubusercontent.com/k1LoW/octocovs/main/badges/kooksee/markview/ratio.svg) ![Test Execution Time](https://raw.githubusercontent.com/k1LoW/octocovs/main/badges/kooksee/markview/time.svg)
 
-`mo` is a **M**arkdown viewer that **o**pens `.md` files in a browser.
+`markview` is a Markdown viewer that opens `.md` files in a browser.
+
+> For AI coding assistant/project guidance, use `.github/copilot-instructions.md` as the single source of truth.
 
 ## Features
 
@@ -35,7 +37,7 @@
 **homebrew tap:**
 
 ```console
-$ brew install k1LoW/tap/mo
+$ brew install kooksee/tap/markview
 ```
 
 **manually:**
@@ -45,26 +47,26 @@ Download binary from [releases page](https://github.com/kooksee/markview/release
 ## Usage
 
 ``` console
-$ mo README.md                          # Open a single file
-$ mo README.md CHANGELOG.md docs/*.md   # Open multiple files
-$ mo spec.md --target design            # Open in a named group
+$ markview README.md                          # Open a single file
+$ markview README.md CHANGELOG.md docs/*.md   # Open multiple files
+$ markview spec.md --target design            # Open in a named group
 ```
 
-`mo` opens Markdown files in a browser with live-reload. When you save a file, the browser automatically reflects the changes.
+`markview` opens Markdown files in a browser with live-reload. When you save a file, the browser automatically reflects the changes.
 
 ### Single server, multiple files
 
-By default, `mo` runs a single server on port `6275`. If a server is already running on the same port, subsequent `mo` invocations add files to the existing session instead of starting a new one.
+By default, `markview` runs a single server on port `6275`. If a server is already running on the same port, subsequent `markview` invocations add files to the existing session instead of starting a new one.
 
 ``` console
-$ mo README.md          # Starts a mo server in the background
-$ mo CHANGELOG.md       # Adds the file to the running mo server
+$ markview README.md          # Starts a markview server in the background
+$ markview CHANGELOG.md       # Adds the file to the running markview server
 ```
 
 To run a completely separate session, use a different port:
 
 ``` console
-$ mo draft.md -p 6276
+$ markview draft.md -p 6276
 ```
 
 ![Multiple files with sidebar](images/multiple-files.png)
@@ -74,9 +76,9 @@ $ mo draft.md -p 6276
 Files can be organized into named groups using the `--target` (`-t`) flag. Each group gets its own URL path and sidebar.
 
 ``` console
-$ mo spec.md --target design      # Opens at http://localhost:6275/design
-$ mo api.md --target design       # Adds to the "design" group
-$ mo notes.md --target notes      # Opens at http://localhost:6275/notes
+$ markview spec.md --target design      # Opens at http://localhost:6275/design
+$ markview api.md --target design       # Adds to the "design" group
+$ markview notes.md --target notes      # Opens at http://localhost:6275/notes
 ```
 
 ![Group view](images/groups.png)
@@ -86,9 +88,9 @@ $ mo notes.md --target notes      # Opens at http://localhost:6275/notes
 Use `--watch` (`-w`) to specify glob patterns. Matching files are opened automatically, and watched directories are monitored for new files.
 
 ``` console
-$ mo --watch '**/*.md'                          # Watch and open all .md files recursively
-$ mo --watch 'docs/**/*.md' --target docs       # Watch docs/ tree in "docs" group
-$ mo --watch '*.md' --watch 'docs/**/*.md'      # Multiple patterns
+$ markview --watch '**/*.md'                          # Watch and open all .md files recursively
+$ markview --watch 'docs/**/*.md' --target docs       # Watch docs/ tree in "docs" group
+$ markview --watch '*.md' --watch 'docs/**/*.md'      # Multiple patterns
 ```
 
 `--watch` cannot be combined with file arguments. The `**` pattern matches directories recursively.
@@ -98,9 +100,9 @@ $ mo --watch '*.md' --watch 'docs/**/*.md'      # Multiple patterns
 Use `--unwatch` to stop watching a previously registered pattern. Files already added remain in the sidebar.
 
 ``` console
-$ mo --unwatch '**/*.md'                              # Stop watching a pattern (default group)
-$ mo --unwatch 'docs/**/*.md' --target docs            # Stop watching in a specific group
-$ mo --unwatch '/Users/you/project/**/*.md'            # Stop watching by absolute path
+$ markview --unwatch '**/*.md'                              # Stop watching a pattern (default group)
+$ markview --unwatch 'docs/**/*.md' --target docs            # Stop watching in a specific group
+$ markview --unwatch '/Users/you/project/**/*.md'            # Stop watching by absolute path
 ```
 
 Patterns are resolved to absolute paths before matching, so you can specify either a relative glob or the full path shown by `--status`.
@@ -115,55 +117,55 @@ The sidebar supports flat and tree view modes. Flat view shows file names only, 
 
 ### Starting and stopping
 
-`mo` runs in the background by default — the command returns immediately, leaving the shell free for other work. This makes it easy to incorporate into scripts, tool chains, or LLM-driven workflows.
+`markview` runs in the background by default — the command returns immediately, leaving the shell free for other work. This makes it easy to incorporate into scripts, tool chains, or LLM-driven workflows.
 
 ``` console
-$ mo README.md
-mo: serving at http://localhost:6275 (pid 12345)
+$ markview README.md
+markview: serving at http://localhost:6275 (pid 12345)
 $ # shell is available immediately
 ```
 
-Use `--status` to check all running mo servers, and `--shutdown` to stop one:
+Use `--status` to check all running markview servers, and `--shutdown` to stop one:
 
 ``` console
-$ mo --status              # Show all running mo servers
+$ markview --status              # Show all running markview servers
 http://localhost:6275 (pid 12345, v0.12.0)
   default: 5 file(s)
     watching: /Users/you/project/src/**/*.md, /Users/you/project/*.md
   docs: 2 file(s)
     watching: /Users/you/project/docs/**/*.md
 
-$ mo --shutdown            # Shut down the mo server on the default port
-$ mo --shutdown -p 6276    # Shut down the mo server on a specific port
-$ mo --restart             # Restart the mo server on the default port
+$ markview --shutdown            # Shut down the markview server on the default port
+$ markview --shutdown -p 6276    # Shut down the markview server on a specific port
+$ markview --restart             # Restart the markview server on the default port
 ```
 
-If you need the mo server to run in the foreground (e.g. for debugging), use `--foreground`:
+If you need the markview server to run in the foreground (e.g. for debugging), use `--foreground`:
 
 ``` console
-$ mo --foreground README.md
+$ markview --foreground README.md
 ```
 
 ### Server restart
 
-Click the <img src="images/icons/restart.svg" width="16" height="16" alt="restart"> restart button (bottom-right corner) or run `mo --restart` to restart the `mo` server process. The current session — all open files and groups — is preserved across the restart. This is useful when you have updated the `mo` binary and want to pick up the new version without re-opening your files.
+Click the <img src="images/icons/restart.svg" width="16" height="16" alt="restart"> restart button (bottom-right corner) or run `markview --restart` to restart the `markview` server process. The current session — all open files and groups — is preserved across the restart. This is useful when you have updated the `markview` binary and want to pick up the new version without re-opening your files.
 
 ### Session backup and restore
 
-`mo` automatically saves session state (open files and watch patterns per group) when files are added or removed. When starting a new server, the previous session is automatically restored and merged with any files specified on the command line. Restored session entries appear first, followed by newly specified files.
+`markview` automatically saves session state (open files and watch patterns per group) when files are added or removed. When starting a new server, the previous session is automatically restored and merged with any files specified on the command line. Restored session entries appear first, followed by newly specified files.
 
 ``` console
-$ mo README.md CHANGELOG.md       # Start with two files
-$ mo --shutdown                   # Shut down the server
-$ mo                              # Restores README.md and CHANGELOG.md
-$ mo TODO.md                      # Restores previous session + adds TODO.md
+$ markview README.md CHANGELOG.md       # Start with two files
+$ markview --shutdown                   # Shut down the server
+$ markview                              # Restores README.md and CHANGELOG.md
+$ markview TODO.md                      # Restores previous session + adds TODO.md
 ```
 
 Use `--clear` to remove a saved session:
 
 ``` console
-$ mo --clear                      # Clear saved session for the default port
-$ mo --clear -p 6276              # Clear saved session for a specific port
+$ markview --clear                      # Clear saved session for the default port
+$ markview --clear -p 6276              # Clear saved session for a specific port
 ```
 
 ### JSON output
@@ -171,7 +173,7 @@ $ mo --clear -p 6276              # Clear saved session for a specific port
 Use `--json` to get structured JSON output on stdout, useful for scripting and integration with other tools.
 
 ``` console
-$ mo --json README.md
+$ markview --json README.md
 {
   "url": "http://localhost:6275",
   "files": [
@@ -187,7 +189,7 @@ $ mo --json README.md
 `--status` also supports `--json`:
 
 ``` console
-$ mo --status --json
+$ markview --status --json
 [
   {
     "url": "http://localhost:6275",
@@ -215,17 +217,17 @@ $ mo --status --json
 | `--bind`       | `-b`  | `0.0.0.0` | Bind address (e.g. `localhost`)                       |
 | `--open`       |       |           | Always open browser                                   |
 | `--no-open`    |       |           | Never open browser                                    |
-| `--status`     |       |           | Show all running mo servers                           |
+| `--status`     |       |           | Show all running markview servers                     |
 | `--watch`      | `-w`  |           | Glob pattern to watch for matching files (repeatable) |
 | `--unwatch`    |       |           | Remove a watched glob pattern (repeatable)            |
-| `--shutdown`   |       |           | Shut down the running mo server                       |
-| `--restart`    |       |           | Restart the running mo server                         |
+| `--shutdown`   |       |           | Shut down the running markview server                 |
+| `--restart`    |       |           | Restart the running markview server                   |
 | `--clear`      |       |           | Clear saved session for the specified port            |
-| `--foreground` |       |           | Run mo server in foreground                           |
+| `--foreground` |       |           | Run markview server in foreground                     |
 | `--json`       |       |           | Output structured data as JSON to stdout              |
 
 > [!WARNING]
-> Binding to a non-loopback address exposes mo to the network **without any authentication**. Remote clients can read any file accessible by the user, browse the filesystem via glob patterns, and shut down the server. A confirmation prompt is shown when `--bind` is set to a non-loopback address.
+> Binding to a non-loopback address exposes markview to the network **without any authentication**. Remote clients can read any file accessible by the user, browse the filesystem via glob patterns, and shut down the server. A confirmation prompt is shown when `--bind` is set to a non-loopback address.
 
 ## Build
 
@@ -244,4 +246,4 @@ $ make build
 - [MIT License](LICENSE)
     - Include logo as well as source code.
     - Only logo license can be selected [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
-    - Also, if there is no alteration to the logo and it is used for technical information about mo, I would not say anything if the copyright notice is omitted.
+    - Also, if there is no alteration to the logo and it is used for technical information about markview, I would not say anything if the copyright notice is omitted.

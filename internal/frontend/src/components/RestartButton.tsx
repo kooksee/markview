@@ -10,7 +10,7 @@ export function RestartButton() {
   useEffect(() => {
     fetchVersion()
       .then(setVersion)
-      .catch(() => {});
+      .catch(() => { });
   }, []);
 
   const handleClick = useCallback(async () => {
@@ -38,7 +38,7 @@ export function RestartButton() {
   }, [status]);
 
   const title = version
-    ? `mo ${version.version} (${version.revision})\nClick to restart`
+    ? `markview ${version.version} (${version.revision})\nClick to restart`
     : "Restart server";
 
   return (

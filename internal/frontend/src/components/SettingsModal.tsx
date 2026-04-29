@@ -15,7 +15,7 @@ interface SettingsModalProps {
 const THEME_OPTIONS: Array<{ value: MermaidSettings["theme"]; label: string }> = [
     { value: "auto", label: "Auto (跟随亮/暗主题)" },
     { value: "high-contrast", label: "高对比 (推荐)" },
-    { value: "custom", label: "自定义 Mo 调色" },
+    { value: "custom", label: "自定义 markview 调色" },
     { value: "github-light", label: "GitHub Light" },
     { value: "github-dark", label: "GitHub Dark" },
     { value: "tokyo-night", label: "Tokyo Night" },
@@ -133,8 +133,8 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                                     key={preset.key}
                                     type="button"
                                     className={`text-left px-3 py-2 rounded-lg border cursor-pointer transition-colors ${settings.preset === preset.key
-                                            ? "border-gh-accent bg-gh-accent/10 text-gh-text"
-                                            : "border-gh-border bg-gh-bg hover:bg-gh-bg-hover text-gh-text-secondary hover:text-gh-text"
+                                        ? "border-gh-accent bg-gh-accent/10 text-gh-text"
+                                        : "border-gh-border bg-gh-bg hover:bg-gh-bg-hover text-gh-text-secondary hover:text-gh-text"
                                         }`}
                                     onClick={() => handleUpdate({ ...preset.settings, preset: preset.key })}
                                 >
@@ -220,8 +220,8 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                         <button
                             type="button"
                             className={`text-sm cursor-pointer px-4 py-1.5 rounded-md transition-colors flex items-center gap-1.5 ${dirty
-                                    ? "text-white bg-green-600 hover:bg-green-700"
-                                    : "text-gh-text-secondary bg-gh-bg border border-gh-border hover:bg-gh-bg-hover"
+                                ? "text-white bg-green-600 hover:bg-green-700"
+                                : "text-gh-text-secondary bg-gh-bg border border-gh-border hover:bg-gh-bg-hover"
                                 }`}
                             onClick={handleApply}
                         >

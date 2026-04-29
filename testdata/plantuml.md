@@ -3,13 +3,13 @@
 ```plantuml
 @startuml
 actor User
-participant "mo" as MO
+participant "markview" as MARKVIEW
 participant Kroki
 
-User -> MO: open Markdown file
-MO -> Kroki: POST PlantUML text
-Kroki --> MO: SVG
-MO --> User: render diagram
+User -> MARKVIEW: open Markdown file
+MARKVIEW -> Kroki: POST PlantUML text
+Kroki --> MARKVIEW: SVG
+MARKVIEW --> User: render diagram
 @enduml
 ```
 

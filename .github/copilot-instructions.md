@@ -1,8 +1,8 @@
-# Copilot Instructions for mo (Markdown Opener)
+# Copilot Instructions for markview
 
-## What is mo
+## What is markview
 
-`mo` is a CLI tool that opens Markdown files in a browser with live-reload. It runs a Go HTTP server that embeds a React SPA as a single binary. The Go module is `github.com/kooksee/markview`.
+`markview` is a CLI tool that opens Markdown files in a browser with live-reload. It runs a Go HTTP server that embeds a React SPA as a single binary. The Go module is `github.com/kooksee/markview`.
 
 ## Build & Run
 
@@ -65,10 +65,10 @@ cd internal/frontend && pnpm run dev
 - `--no-open` — Never open browser
 - `--watch` / `-w` — Glob pattern to watch for matching files (repeatable)
 - `--unwatch` — Remove a watched glob pattern (repeatable)
-- `--status` — Show status of all running mo servers
-- `--shutdown` — Shut down the running mo server
-- `--restart` — Restart the running mo server
-- `--foreground` — Run mo server in foreground (do not background)
+- `--status` — Show status of all running markview servers
+- `--shutdown` — Shut down the running markview server
+- `--restart` — Restart the running markview server
+- `--foreground` — Run markview server in foreground (do not background)
 - `--dangerously-allow-remote-access` — Allow remote access without authentication (trusted networks only)
 
 ## Architecture
@@ -79,8 +79,8 @@ cd internal/frontend && pnpm run dev
 - `internal/server/server.go` — HTTP server, state management (mutex-guarded), SSE for live-reload, file watcher (fsnotify). All API routes use `/_/` prefix to avoid collision with SPA route paths (group names).
 - `internal/static/static.go` — `go:generate` runs the frontend build, then `go:embed` embeds the output from `internal/static/dist/`.
 - `internal/frontend/` — Vite + React 19 + TypeScript + Tailwind CSS v4 SPA. Build output goes to `internal/static/dist/` (configured in `vite.config.ts`).
-- `internal/backup/` — State persistence for open files/groups using atomic JSON writes to `$XDG_STATE_HOME/mo/backup/`. Enables session restoration across server restarts.
-- `internal/logfile/` — Rotating JSON logging to `$XDG_STATE_HOME/mo/log/` (max 10MB, 3 backups, 7-day retention).
+- `internal/backup/` — State persistence for open files/groups using atomic JSON writes to `$XDG_STATE_HOME/markview/backup/`. Enables session restoration across server restarts.
+- `internal/logfile/` — Rotating JSON logging to `$XDG_STATE_HOME/markview/log/` (max 10MB, 3 backups, 7-day retention).
 - `internal/xdg/` — XDG Base Directory helper. `StateHome()` returns `$XDG_STATE_HOME` or default `~/.local/state`.
 - `version/version.go` — Version info, updated by tagpr on release. Build embeds revision via ldflags.
 
@@ -104,9 +104,9 @@ cd internal/frontend && pnpm run dev
 - **Sidebar view modes**: Flat (default, with drag-and-drop reorder via dnd-kit) and tree (hierarchical directory view). View mode is persisted per-group in localStorage. Collapsed directory state is managed inside `TreeView` and also persisted per-group.
 - **Resizable panels**: Both `Sidebar.tsx` (left) and `TocPanel.tsx` (right) use the same drag-to-resize pattern with localStorage persistence. Left sidebar uses `e.clientX`, right panel uses `window.innerWidth - e.clientX`.
 - **Toolbar buttons in content area**: The toolbar column (ToC + Raw toggles) lives inside `MarkdownViewer.tsx`, positioned with `shrink-0 flex flex-col gap-2 -mr-4 -mt-4` to align with the header.
-- **State persistence**: Server state (files, groups, patterns) is backed up to `$XDG_STATE_HOME/mo/backup/mo-<port>.json` via `internal/backup`. On `--restart`, the server reloads this state to preserve the session. When starting a new server, backup is always restored and merged with CLI-specified files/patterns (restored entries first, CLI entries appended, duplicates skipped). The backup file is preserved across clean `--shutdown` and is only removed via the `--clear` path in the CLI.
+- **State persistence**: Server state (files, groups, patterns) is backed up to `$XDG_STATE_HOME/markview/backup/markview-<port>.json` via `internal/backup`. On `--restart`, the server reloads this state to preserve the session. When starting a new server, backup is always restored and merged with CLI-specified files/patterns (restored entries first, CLI entries appended, duplicates skipped). The backup file is preserved across clean `--shutdown` and is only removed via the `--clear` path in the CLI.
 - **Glob pattern watching**: `--watch` registers glob patterns that are expanded to matching files and monitored for new files via fsnotify directory watches. Patterns are stored with reference-counted directory watches (`watchedDirs map[string]int`). `--unwatch` removes patterns and decrements watch ref counts. Groups persist as long as they have files or patterns.
-- **localStorage conventions**: All keys use `mo-` prefix (e.g., `mo-sidebar-width`, `mo-sidebar-viewmode`, `mo-sidebar-tree-collapsed`, `mo-theme`). Read patterns use `try/catch` around `JSON.parse` with fallback defaults.
+- **localStorage conventions**: All keys use `markview-` prefix (e.g., `markview-sidebar-width`, `markview-sidebar-viewmode`, `markview-sidebar-tree-collapsed`, `markview-theme`). Read patterns use `try/catch` around `JSON.parse` with fallback defaults.
 
 ## API Conventions
 

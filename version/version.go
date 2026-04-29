@@ -1,7 +1,7 @@
 package version
 
 const (
-	Name    = "mo"
+	Name    = "markview"
 	Version = "0.18.1" //nostyle:repetition
 )
 
