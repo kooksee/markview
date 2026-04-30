@@ -12,6 +12,12 @@
 
 > 如果你在使用 AI 编码助手或需要项目约束说明，请以 `.github/copilot-instructions.md` 为准。
 
+> [!NOTE]
+> **项目来源与版权说明**
+>
+> 本项目基于 [k1LoW/mo](https://github.com/k1LoW/mo) 演进开发，遵循其开源许可（MIT）。
+> 为尊重原作者与版权，本仓库保留来源标注与许可说明；详见根目录 `NOTICE` 与 `LICENSE`。
+
 ## 功能特性
 
 - 支持 GitHub 风格 Markdown（表格、任务列表、脚注等）
@@ -282,3 +288,9 @@ $ make build
   - 包含源码与 logo 在内的项目整体以 MIT 许可发布。
   - logo 也可单独按 [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) 使用。
   - 在不修改 logo 且用于 markview 技术说明场景时，通常可不强制要求额外版权标注。
+
+### 上游来源致谢
+
+- Upstream: [k1LoW/mo](https://github.com/k1LoW/mo)
+- 上游许可：MIT（Copyright © 2026 Ken'ichiro Oyama）
+- 归属与说明：见本仓库 `NOTICE`
