@@ -26,12 +26,14 @@ import { captureArticleForMergedPdf, exportMergedPdfFromSnapshots } from "./util
 import { OutlineGraphView } from "./components/OutlineGraphView";
 import { OutlineGravityView } from "./components/OutlineGravityView";
 import { OutlineTreeView } from "./components/OutlineTreeView";
+import { OutlineNotebookPanel } from "./components/OutlineNotebookPanel";
 import { isStaticMode } from "./utils/staticData";
 
 const WIDTH_STORAGE_KEY = "markview-layout-width";
 const VIEWMODE_STORAGE_KEY = "markview-sidebar-viewmode";
 const PDF_OPEN_FILE_PARAM = "markview_open";
 const PDF_OPEN_FROM_PARAM = "markview_from";
+const NOTEBOOK_LEFT_TAB_KEY = "markview-notebook-left-tab";
 
 interface PendingPdfOpenRequest {
   fromFileId: string;
@@ -86,6 +88,14 @@ export function App() {
   const [showGraph, setShowGraph] = useState(false);
   const [graphViewMode, setGraphViewMode] = useState<"link" | "outline" | "gravity" | "tree" | "notebook">("link");
   const [isExportingAllPdf, setIsExportingAllPdf] = useState(false);
+  const [notebookLeftTab, setNotebookLeftTab] = useState<"mindmap" | "outline">(() => {
+    try {
+      const raw = localStorage.getItem(NOTEBOOK_LEFT_TAB_KEY);
+      return raw === "outline" ? "outline" : "mindmap";
+    } catch {
+      return "mindmap";
+    }
+  });
   const [status, setStatus] = useState<Status | null>(null);
   const knownFileIds = useRef<Set<string>>(new Set());
   const [initialFileId, setInitialFileId] = useState<string | null>(() => {
@@ -309,6 +319,14 @@ export function App() {
       /* ignore */
     }
   }, [isWide]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(NOTEBOOK_LEFT_TAB_KEY, notebookLeftTab);
+    } catch {
+      /* ignore */
+    }
+  }, [notebookLeftTab]);
 
   const handleViewModeToggle = useCallback(() => {
     setViewModes((prev) => {
@@ -678,7 +696,22 @@ export function App() {
                 <div className="flex h-full min-h-[560px] gap-4">
                   <section className="flex h-full min-h-0 w-[36%] min-w-[320px] max-w-[560px] flex-col rounded-lg border border-gh-border bg-gh-bg-sidebar p-3">
                     <div className="mb-2 flex items-center justify-between gap-2">
-                      <h2 className="text-sm font-semibold text-gh-text-primary">大纲笔记</h2>
+                      <div className="inline-flex items-center rounded-md border border-gh-border p-0.5">
+                        <button
+                          type="button"
+                          className={`rounded px-2 py-1 text-xs transition-colors ${notebookLeftTab === "mindmap" ? "bg-gh-bg-hover text-gh-text-primary" : "text-gh-text-secondary hover:bg-gh-bg-hover"}`}
+                          onClick={() => setNotebookLeftTab("mindmap")}
+                        >
+                          思维导图
+                        </button>
+                        <button
+                          type="button"
+                          className={`rounded px-2 py-1 text-xs transition-colors ${notebookLeftTab === "outline" ? "bg-gh-bg-hover text-gh-text-primary" : "text-gh-text-secondary hover:bg-gh-bg-hover"}`}
+                          onClick={() => setNotebookLeftTab("outline")}
+                        >
+                          大纲笔记
+                        </button>
+                      </div>
                       <button
                         type="button"
                         className="rounded-md border border-gh-border bg-transparent px-2 py-1 text-xs text-gh-text-secondary hover:bg-gh-bg-hover"
@@ -688,11 +721,19 @@ export function App() {
                       </button>
                     </div>
                     <div className="min-h-0 flex-1">
-                      <OutlineTreeView
-                        onClose={() => setShowGraph(false)}
-                        onSelectFile={handleNotebookFileSelect}
-                        embedded
-                      />
+                      {notebookLeftTab === "mindmap" ? (
+                        <OutlineTreeView
+                          onClose={() => setShowGraph(false)}
+                          onSelectFile={handleNotebookFileSelect}
+                          embedded
+                        />
+                      ) : (
+                        <OutlineNotebookPanel
+                          groupName={activeGroup}
+                          headings={headings}
+                          onNavigateHeading={handleHeadingClick}
+                        />
+                      )}
                     </div>
                   </section>
                   <section className="min-w-0 flex-1 rounded-lg border border-gh-border bg-gh-bg p-4">
