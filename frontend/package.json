@@ -51,14 +51,14 @@
     "shiki": "^4.0.1"
   },
   "devDependencies": {
-    "@tailwindcss/vite": "^4.2.1",
+    "@tailwindcss/vite": "^4.2.4",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^14.6.1",
     "@types/d3": "^7.4.3",
     "@types/react": "^19.1.0",
     "@types/react-dom": "^19.1.0",
-    "@vitejs/plugin-react": "^5.1.4",
+    "@vitejs/plugin-react": "^6.0.1",
     "@vitest/coverage-v8": "^4.0.18",
     "jsdom": "^28.1.0",
     "oxfmt": "^0.36.0",
@@ -67,7 +67,7 @@
     "rollup-plugin-license": "^3.7.0",
     "tailwindcss": "^4.2.1",
     "typescript": "~5.9.3",
-    "vite": "^7.3.1",
+    "vite": "^8.0.10",
     "vitest": "^4.0.18"
   }
 }

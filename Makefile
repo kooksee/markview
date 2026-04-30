@@ -44,6 +44,7 @@ depsdev:
 credits: depsdev generate
 	go mod download
 	gocredits -w .
+	cd frontend && MARKVIEW_BUILD_CREDITS=1 pnpm run build
 	printf "\n================================================================\n\n" >> CREDITS
 	cat frontend/CREDITS_FRONTEND >> CREDITS
 
