@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+    buildDocumentMindmapGraphTree,
     buildDocumentMindmapMermaid,
     buildDocumentMindmapTree,
     sanitizeMermaidMindmapText,
@@ -40,5 +41,21 @@ describe("documentMindmap utils", () => {
     it("sanitizes unsupported characters for Mermaid mindmap labels", () => {
         const text = sanitizeMermaidMindmapText('Title (A) [x] {y}\n"quoted"');
         expect(text).toBe("Title A x y 'quoted'");
+    });
+
+    it("builds graph tree data for interactive mindmap rendering", () => {
+        const graph = buildDocumentMindmapGraphTree(
+            [
+                { id: "h1", text: "Overview", level: 1 },
+                { id: "h2", text: "Install", level: 2 },
+                { id: "h3", text: "Usage", level: 2 },
+            ],
+            "README.md",
+        );
+
+        expect(graph.id).toBe("document-root");
+        expect(graph.data.isRoot).toBe(true);
+        expect(graph.data.value).toBe("Overview");
+        expect(graph.children?.map((item) => item.id)).toEqual(["h2", "h3"]);
     });
 });

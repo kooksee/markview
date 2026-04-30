@@ -7,6 +7,18 @@ export interface DocumentMindmapNode {
     children: DocumentMindmapNode[];
 }
 
+export interface DocumentMindmapGraphNode {
+    id: string;
+    data: {
+        value: string;
+        level: number;
+        branchIndex: number;
+        headingId?: string;
+        isRoot?: boolean;
+    };
+    children?: DocumentMindmapGraphNode[];
+}
+
 function clampHeadingLevel(level: number): number {
     return Math.max(1, Math.min(6, Math.floor(level)));
 }
@@ -71,4 +83,52 @@ export function buildDocumentMindmapMermaid(
     }
 
     return lines.join("\n");
+}
+
+function mapGraphChildren(
+    nodes: DocumentMindmapNode[],
+    branchIndex: number,
+): DocumentMindmapGraphNode[] {
+    return nodes.map((node) => ({
+        id: node.id,
+        data: {
+            value: node.text,
+            level: node.level,
+            branchIndex,
+            headingId: node.id,
+        },
+        ...(node.children.length > 0
+            ? { children: mapGraphChildren(node.children, branchIndex) }
+            : {}),
+    }));
+}
+
+export function buildDocumentMindmapGraphTree(
+    headings: NotebookHeadingLike[],
+    rootTitle = "当前文档",
+): DocumentMindmapGraphNode {
+    const trees = buildDocumentMindmapTree(headings);
+
+    let rootLabel = sanitizeMermaidMindmapText(rootTitle);
+    let topLevel = trees;
+
+    // If the document has a single H1 wrapping all sections,
+    // use that H1 as root and promote its children as main branches.
+    if (trees.length === 1 && trees[0].level === 1 && trees[0].children.length > 0) {
+        rootLabel = trees[0].text;
+        topLevel = trees[0].children;
+    }
+
+    const children = topLevel.flatMap((node, index) => mapGraphChildren([node], index));
+
+    return {
+        id: "document-root",
+        data: {
+            value: rootLabel,
+            level: 0,
+            branchIndex: -1,
+            isRoot: true,
+        },
+        ...(children.length > 0 ? { children } : {}),
+    };
 }
