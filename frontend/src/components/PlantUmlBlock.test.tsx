@@ -62,6 +62,7 @@ describe("PlantUmlBlock", () => {
         render(<PlantUmlBlock code="@startuml\nA -> B\n@enduml" />);
 
         await waitFor(() => {
+            expect(screen.getByText("图表渲染失败，已回退为代码块显示。")).toBeInTheDocument();
             expect(screen.getByText(/@startuml/)).toBeInTheDocument();
             expect(screen.getByText(/@enduml/)).toBeInTheDocument();
             expect(screen.queryByRole("img", { name: "PlantUML diagram" })).not.toBeInTheDocument();

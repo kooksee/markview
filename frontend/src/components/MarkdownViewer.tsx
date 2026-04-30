@@ -872,6 +872,11 @@ export function MermaidBlock({ code }: { code: string }) {
   }
   return (
     <div ref={containerRef} data-mermaid-render-status={renderStatus} className="relative group">
+      {renderStatus === "failed" && (
+        <div className="mb-2 rounded-md border border-gh-border bg-gh-bg-subtle px-2 py-1 text-xs text-gh-text-secondary">
+          图表渲染失败，已回退为代码块显示。
+        </div>
+      )}
       <pre>
         <code>{code}</code>
       </pre>
@@ -1068,6 +1073,11 @@ export function SvgBobBlock({ code }: { code: string }) {
 
   return (
     <div className="relative group" data-svgbob-render-status={renderStatus}>
+      {renderStatus === "failed" && (
+        <div className="mb-2 rounded-md border border-gh-border bg-gh-bg-subtle px-2 py-1 text-xs text-gh-text-secondary">
+          图表渲染失败，已回退为代码块显示。
+        </div>
+      )}
       <pre>
         <code>{code}</code>
       </pre>
@@ -1260,6 +1270,11 @@ export function PlantUmlBlock({ code }: { code: string }) {
 
   return (
     <div className="relative group" data-plantuml-render-status={renderStatus}>
+      {renderStatus === "failed" && (
+        <div className="mb-2 rounded-md border border-gh-border bg-gh-bg-subtle px-2 py-1 text-xs text-gh-text-secondary">
+          图表渲染失败，已回退为代码块显示。
+        </div>
+      )}
       <pre>
         <code>{code}</code>
       </pre>
@@ -1655,6 +1670,7 @@ export function MarkdownViewer({
   const [content, setContent] = useState("");
   const [loading, setLoading] = useState(true);
   const [isRawView, setIsRawView] = useState(false);
+  const [linkOpenError, setLinkOpenError] = useState<string | null>(null);
   const articleRef = useRef<HTMLElement>(null);
   const [prevFetchKey, setPrevFetchKey] = useState({ fileId, revision });
 
@@ -1665,6 +1681,7 @@ export function MarkdownViewer({
 
   useEffect(() => {
     let cancelled = false;
+    setLinkOpenError(null);
     fetchFileContent(fileId)
       .then((data) => {
         if (!cancelled) {
@@ -1686,6 +1703,7 @@ export function MarkdownViewer({
   const handleLinkClick = useCallback(
     async (e: React.MouseEvent<HTMLAnchorElement>, href: string, anchor: string | null) => {
       e.preventDefault();
+      setLinkOpenError(null);
       try {
         const entry = await openRelativeFile(fileId, href);
         onFileOpened(entry.id);
@@ -1699,7 +1717,7 @@ export function MarkdownViewer({
           });
         }
       } catch {
-        // fallback: do nothing
+        setLinkOpenError(`无法打开链接：${href}`);
       }
     },
     [fileId, onFileOpened],
@@ -1894,6 +1912,14 @@ export function MarkdownViewer({
         data-file-id={fileId}
         className={`markdown-body min-w-0 flex-1${isWide ? " markdown-body--wide" : ""}`}
       >
+        {linkOpenError && (
+          <div
+            role="status"
+            className="mb-3 rounded-md border border-gh-border bg-gh-bg-subtle px-3 py-2 text-sm text-gh-text-secondary"
+          >
+            {linkOpenError}
+          </div>
+        )}
         {renderedContent}
         <BacklinksPanel fileId={fileId} />
       </article>

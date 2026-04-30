@@ -249,6 +249,7 @@ $ make build
 
 - [设计文档](docs/design.md)
 - [架构文档](docs/architecture.md)
+- [Markdown 能力清单](docs/markdown-capabilities.md)
 - [全局搜索功能说明](docs/global-search.md)
 
 ### 中文速览
