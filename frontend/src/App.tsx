@@ -26,7 +26,6 @@ import { captureArticleForMergedPdf, exportMergedPdfFromSnapshots } from "./util
 import { OutlineGraphView } from "./components/OutlineGraphView";
 import { OutlineGravityView } from "./components/OutlineGravityView";
 import { OutlineTreeView } from "./components/OutlineTreeView";
-import { DocumentMindmapPanel } from "./components/DocumentMindmapPanel";
 import { isStaticMode } from "./utils/staticData";
 
 const WIDTH_STORAGE_KEY = "markview-layout-width";
@@ -63,7 +62,6 @@ export function App() {
   const [activeFileId, setActiveFileId] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [tocOpen, setTocOpen] = useState(false);
-  const [mindmapOpen, setMindmapOpen] = useState(false);
   const [headings, setHeadings] = useState<TocHeading[]>([]);
   const [contentRevision, setContentRevision] = useState(0);
   const [searchQuery, setSearchQuery] = useState<string | null>(null);
@@ -86,7 +84,7 @@ export function App() {
     }
   });
   const [showGraph, setShowGraph] = useState(false);
-  const [graphViewMode, setGraphViewMode] = useState<"link" | "outline" | "gravity" | "tree" | "notebook">("link");
+  const [graphViewMode, setGraphViewMode] = useState<"link" | "outline" | "gravity" | "tree">("link");
   const [isExportingAllPdf, setIsExportingAllPdf] = useState(false);
   const [status, setStatus] = useState<Status | null>(null);
   const knownFileIds = useRef<Set<string>>(new Set());
@@ -606,28 +604,6 @@ export function App() {
               <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-7.5-5.25H12" />
             </svg>
           </button>
-          <button
-            type="button"
-            className={`flex items-center justify-center rounded-md p-1.5 cursor-pointer transition-colors duration-150 border ${showGraph && graphViewMode === "notebook" ? "bg-gh-bg-hover border-gh-border" : "bg-transparent border-gh-border hover:bg-gh-bg-hover"
-              } text-gh-header-text`}
-            onClick={() => {
-              if (activeFileId == null) {
-                const first = groups.find((g) => g.name === activeGroup)?.files[0]?.id ?? null;
-                if (first != null) {
-                  setActiveFileId(first);
-                }
-              }
-              setGraphViewMode("notebook");
-              setShowGraph(true);
-            }}
-            aria-label="Outline notebook"
-            aria-pressed={showGraph && graphViewMode === "notebook"}
-            title="大纲笔记（类幕布）"
-          >
-            <svg className="size-5" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 4.5h6v15h-6zM13.5 4.5h6v4h-6zm0 6h6v4h-6zm0 6h6v3h-6z" />
-            </svg>
-          </button>
           <WidthToggle isWide={isWide} onToggle={() => setIsWide((v) => !v)} />
           <button
             type="button"
@@ -670,54 +646,6 @@ export function App() {
                 <OutlineGravityView onClose={() => setShowGraph(false)} />
               ) : graphViewMode === "tree" ? (
                 <OutlineTreeView onClose={() => setShowGraph(false)} />
-              ) : graphViewMode === "notebook" ? (
-                <div className="flex h-full min-h-[560px] gap-4">
-                  <section className="flex h-full min-h-0 w-[36%] min-w-[320px] max-w-[560px] flex-col rounded-lg border border-gh-border bg-gh-bg-sidebar p-3">
-                    <div className="mb-2 flex items-center justify-between gap-2">
-                      <div className="text-xs text-gh-text-secondary">当前文档思维导图</div>
-                      <button
-                        type="button"
-                        className="rounded-md border border-gh-border bg-transparent px-2 py-1 text-xs text-gh-text-secondary hover:bg-gh-bg-hover"
-                        onClick={() => setShowGraph(false)}
-                      >
-                        返回文档
-                      </button>
-                    </div>
-                    <div className="min-h-0 flex-1">
-                      <DocumentMindmapPanel
-                        headings={headings}
-                        fileName={activeFileName}
-                        onNavigateHeading={handleHeadingClick}
-                      />
-                    </div>
-                  </section>
-                  <section className="min-w-0 flex-1 rounded-lg border border-gh-border bg-gh-bg p-4">
-                    {activeFileId != null ? (
-                      <MarkdownViewer
-                        fileId={activeFileId}
-                        fileName={activeFileName}
-                        revision={contentRevision}
-                        onFileOpened={handleFileOpened}
-                        onHeadingsChange={setHeadings}
-                        onContentRendered={onContentRendered}
-                        isTocOpen={tocOpen}
-                        onTocToggle={() => setTocOpen((v) => !v)}
-                        isMindmapOpen={mindmapOpen}
-                        onMindmapToggle={() => setMindmapOpen((v) => !v)}
-                        onRemoveFile={handleRemoveFile}
-                        isWide={isWide}
-                        searchJumpRequest={
-                          pendingSearchJump?.fileId === activeFileId ? pendingSearchJump : null
-                        }
-                        onSearchJumpHandled={() => setPendingSearchJump(null)}
-                      />
-                    ) : (
-                      <div className="flex h-full items-center justify-center text-sm text-gh-text-secondary">
-                        请在左侧选择一个文档开始大纲笔记浏览
-                      </div>
-                    )}
-                  </section>
-                </div>
               ) : (
                 <GraphView onClose={() => setShowGraph(false)} />
               )
@@ -731,8 +659,6 @@ export function App() {
                 onContentRendered={onContentRendered}
                 isTocOpen={tocOpen}
                 onTocToggle={() => setTocOpen((v) => !v)}
-                isMindmapOpen={mindmapOpen}
-                onMindmapToggle={() => setMindmapOpen((v) => !v)}
                 onRemoveFile={handleRemoveFile}
                 isWide={isWide}
                 searchJumpRequest={
@@ -747,19 +673,8 @@ export function App() {
             )}
           </div>
         </main>
-        {(mindmapOpen || tocOpen) && (
+        {tocOpen && (
           <div className="flex h-full shrink-0">
-            {mindmapOpen && (
-              <aside className="flex h-full min-h-0 w-[420px] min-w-[300px] max-w-[620px] shrink-0 flex-col border-l border-gh-border bg-gh-bg-sidebar p-2">
-                <div className="min-h-0 flex-1 overflow-hidden">
-                  <DocumentMindmapPanel
-                    headings={headings}
-                    fileName={activeFileName}
-                    onNavigateHeading={handleHeadingClick}
-                  />
-                </div>
-              </aside>
-            )}
             {tocOpen && (
               <TocPanel
                 headings={headings}
