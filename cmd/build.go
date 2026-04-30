@@ -5,7 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/k1LoW/mo/internal/build"
+	"github.com/kooksee/markview/internal/build"
 	"github.com/spf13/cobra"
 )
 
@@ -23,10 +23,10 @@ The output is a directory containing index.html and all necessary assets,
 with all file contents embedded. No server is needed to view the result.
 
 Examples:
-  mo build docs/                         Build from docs/ to docs-static/
-  mo build docs/ -o dist/                Build from docs/ to dist/
-  mo build .                             Build from current directory
-  mo build README.md CHANGELOG.md        Build from specific files`,
+	markview build docs/                         Build from docs/ to docs-static/
+	markview build docs/ -o dist/                Build from docs/ to dist/
+	markview build .                             Build from current directory
+	markview build README.md CHANGELOG.md        Build from specific files`,
 	Args: cobra.MinimumNArgs(1),
 	RunE: runBuild,
 }
@@ -62,11 +62,11 @@ func runBuild(_ *cobra.Command, args []string) error {
 			return fmt.Errorf("cannot resolve output directory: %w", err)
 		}
 
-		fmt.Fprintf(os.Stderr, "mo: scanning %s for markdown files...\n", firstAbs)
+		fmt.Fprintf(os.Stderr, "markview: scanning %s for markdown files...\n", firstAbs)
 		if err := build.BuildStaticSite(firstAbs, absOutput); err != nil {
 			return err
 		}
-		fmt.Fprintf(os.Stderr, "mo: static site built to %s\n", absOutput)
+		fmt.Fprintf(os.Stderr, "markview: static site built to %s\n", absOutput)
 		return nil
 	}
 
@@ -89,17 +89,17 @@ func runBuild(_ *cobra.Command, args []string) error {
 
 	outputDir := buildOutput
 	if outputDir == "" {
-		outputDir = "mo-static"
+		outputDir = "markview-static"
 	}
 	absOutput, err := filepath.Abs(outputDir)
 	if err != nil {
 		return fmt.Errorf("cannot resolve output directory: %w", err)
 	}
 
-	fmt.Fprintf(os.Stderr, "mo: building from %d file(s)...\n", len(files))
+	fmt.Fprintf(os.Stderr, "markview: building from %d file(s)...\n", len(files))
 	if err := build.BuildStaticSiteFromFiles(files, absOutput); err != nil {
 		return err
 	}
-	fmt.Fprintf(os.Stderr, "mo: static site built to %s\n", absOutput)
+	fmt.Fprintf(os.Stderr, "markview: static site built to %s\n", absOutput)
 	return nil
 }

@@ -117,7 +117,7 @@ interface OutlineGraphViewProps {
   onClose: () => void;
 }
 
-const FLOW_DIRECTION_KEY = "mo-outline-graph-direction";
+const FLOW_DIRECTION_KEY = "markview-outline-graph-direction";
 
 export function OutlineGraphView({ onClose }: OutlineGraphViewProps) {
   const [outline, setOutline] = useState<Outline | null>(null);
@@ -259,7 +259,7 @@ export function OutlineGraphView({ onClose }: OutlineGraphViewProps) {
       mermaid
         .render(id, code, container)
         .then(({ svg: s }) => setSvg(s))
-        .catch(() => {})
+        .catch(() => { })
         .finally(() => container.remove());
     });
     observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });

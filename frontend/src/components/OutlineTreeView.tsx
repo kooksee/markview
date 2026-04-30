@@ -81,16 +81,16 @@ function buildFileOutline(
             const targetOutline =
               hasTargetContent && !collapsedIds.has(linkId)
                 ? buildFileOutline(
-                    targetFile,
-                    outline,
-                    fileIds,
-                    fileById,
-                    targetColorIdx,
-                    new Set(visited),
-                    depth + 1,
-                    linkId,
-                    collapsedIds,
-                  )
+                  targetFile,
+                  outline,
+                  fileIds,
+                  fileById,
+                  targetColorIdx,
+                  new Set(visited),
+                  depth + 1,
+                  linkId,
+                  collapsedIds,
+                )
                 : [];
 
             linkChildren.push({
@@ -288,7 +288,7 @@ interface OutlineTreeViewProps {
   onClose: () => void;
 }
 
-const LAYOUT_DIRECTION_KEY = "mo-outline-layout-direction";
+const LAYOUT_DIRECTION_KEY = "markview-outline-layout-direction";
 
 export function OutlineTreeView({ onClose }: OutlineTreeViewProps) {
   const [outline, setOutline] = useState<Outline | null>(null);

@@ -28,10 +28,10 @@ import { OutlineGravityView } from "./components/OutlineGravityView";
 import { OutlineTreeView } from "./components/OutlineTreeView";
 import { isStaticMode } from "./utils/staticData";
 
-const WIDTH_STORAGE_KEY = "mo-layout-width";
-const VIEWMODE_STORAGE_KEY = "mo-sidebar-viewmode";
-const PDF_OPEN_FILE_PARAM = "mo_open";
-const PDF_OPEN_FROM_PARAM = "mo_from";
+const WIDTH_STORAGE_KEY = "markview-layout-width";
+const VIEWMODE_STORAGE_KEY = "markview-sidebar-viewmode";
+const PDF_OPEN_FILE_PARAM = "markview_open";
+const PDF_OPEN_FROM_PARAM = "markview_from";
 
 interface PendingPdfOpenRequest {
   fromFileId: string;
@@ -261,7 +261,7 @@ export function App() {
   );
 
   useEffect(() => {
-    document.title = activeFileName || "mo";
+    document.title = activeFileName || "markview";
   }, [activeFileName]);
 
   useSSE({

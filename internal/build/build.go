@@ -12,9 +12,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/k1LoW/mo/internal/server"
-	"github.com/k1LoW/mo/internal/static"
-	"github.com/k1LoW/mo/version"
+	"github.com/kooksee/markview/internal/server"
+	"github.com/kooksee/markview/internal/static"
+	"github.com/kooksee/markview/version"
 )
 
 // staticFileContent holds a file's content for static export.
@@ -230,7 +230,7 @@ func buildAndWrite(entries []*server.FileEntry, outputDir string) error {
 
 		if path == "index.html" {
 			injection := fmt.Sprintf(
-				`<script>window.__MO_STATIC_DATA__=%s;</script>`,
+				`<script>window.__MARKVIEW_STATIC_DATA__=%s;</script>`,
 				string(dataJSON),
 			)
 			fileData = bytes.Replace(
@@ -251,7 +251,7 @@ func buildAndWrite(entries []*server.FileEntry, outputDir string) error {
 		return fmt.Errorf("writing output: %w", err)
 	}
 
-	fmt.Fprintf(os.Stderr, "mo: %d file(s) processed\n", len(entries))
+	fmt.Fprintf(os.Stderr, "markview: %d file(s) processed\n", len(entries))
 	return nil
 }
 

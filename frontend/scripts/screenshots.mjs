@@ -4,7 +4,7 @@ import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const ROOT = resolve(__dirname, "../../..");
+const ROOT = resolve(__dirname, "../..");
 const PORT = 16275;
 const BASE = `http://localhost:${PORT}`;
 const IMAGES_DIR = resolve(ROOT, "images");
@@ -15,7 +15,7 @@ async function waitForServer(maxRetries = 30) {
     try {
       const res = await fetch(`${BASE}/_/api/groups`);
       if (res.ok) return;
-    } catch {}
+    } catch { }
     await new Promise((r) => setTimeout(r, 500));
   }
   throw new Error("Server did not start");
@@ -37,13 +37,13 @@ async function waitForRendering(page) {
     .locator(".shiki")
     .first()
     .waitFor({ timeout: 15000 })
-    .catch(() => {});
+    .catch(() => { });
   // Wait for Mermaid SVGs
   await page
     .locator("svg[id^='mermaid']")
     .first()
     .waitFor({ timeout: 15000 })
-    .catch(() => {});
+    .catch(() => { });
   // Extra settle time
   await page.waitForTimeout(1000);
 }
@@ -52,7 +52,7 @@ async function main() {
   // Start server with an initial file
   console.log("Starting server on port", PORT);
   const firstFile = resolve(TESTDATA, "basic.md");
-  const server = spawn(resolve(ROOT, "mo"), [firstFile, "-p", String(PORT)], {
+  const server = spawn(resolve(ROOT, "markview"), [firstFile, "-p", String(PORT)], {
     cwd: ROOT,
     stdio: "ignore",
   });
@@ -78,7 +78,7 @@ async function main() {
 
       const page1 = await context.newPage();
       await page1.addInitScript(() => {
-        localStorage.setItem("mo-theme", "dark");
+        localStorage.setItem("markview-theme", "dark");
       });
       await page1.goto(BASE);
       await page1.waitForLoadState("load");
@@ -108,7 +108,7 @@ async function main() {
       const page2 = await context.newPage();
       // Set dark theme before navigating so Mermaid initializes with dark theme
       await page2.addInitScript(() => {
-        localStorage.setItem("mo-theme", "dark");
+        localStorage.setItem("markview-theme", "dark");
       });
       await page2.goto(`${BASE}/design`);
       await page2.waitForLoadState("load");
@@ -146,7 +146,7 @@ async function main() {
 
       const page3 = await context.newPage();
       await page3.addInitScript(() => {
-        localStorage.setItem("mo-theme", "dark");
+        localStorage.setItem("markview-theme", "dark");
       });
       await page3.goto(`${BASE}/project`);
       await page3.waitForLoadState("load");
@@ -180,12 +180,12 @@ async function main() {
     }
   } finally {
     server.kill();
-    // Kill any remaining mo process on the port
+    // Kill any remaining markview process on the port
     try {
       execSync(`lsof -i :${PORT} -t | xargs kill 2>/dev/null`, {
         stdio: "ignore",
       });
-    } catch {}
+    } catch { }
     console.log("Done");
   }
 }
@@ -196,6 +196,6 @@ main().catch((err) => {
     execSync(`lsof -i :${PORT} -t | xargs kill 2>/dev/null`, {
       stdio: "ignore",
     });
-  } catch {}
+  } catch { }
   process.exit(1);
 });

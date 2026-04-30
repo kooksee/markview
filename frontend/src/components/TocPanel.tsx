@@ -15,8 +15,8 @@ interface TocPanelProps {
 const MIN_WIDTH = 180;
 const MAX_WIDTH = 480;
 const DEFAULT_WIDTH = 240;
-const STORAGE_KEY = "mo-toc-width";
-const COLLAPSED_KEY = "mo-toc-collapsed";
+const STORAGE_KEY = "markview-toc-width";
+const COLLAPSED_KEY = "markview-toc-collapsed";
 
 function getInitialWidth(): number {
   const stored = localStorage.getItem(STORAGE_KEY);
@@ -180,8 +180,8 @@ export function TocPanel({ headings, activeHeadingId, onHeadingClick }: TocPanel
                 {/* Heading button */}
                 <button
                   className={`flex items-center gap-1.5 flex-1 min-w-0 ${INDENT[h.level] ?? "pl-3"} pr-3 py-1.5 border-none cursor-pointer text-left text-sm transition-colors duration-150 ${h.id === activeHeadingId
-                      ? "bg-gh-bg-active text-gh-text font-semibold"
-                      : "bg-transparent text-gh-text-secondary hover:bg-gh-bg-hover"
+                    ? "bg-gh-bg-active text-gh-text font-semibold"
+                    : "bg-transparent text-gh-text-secondary hover:bg-gh-bg-hover"
                     }`}
                   onClick={() => onHeadingClick(h.id)}
                   title={`${LEVEL_BADGE[h.level] ?? "H?"} — ${h.text}`}

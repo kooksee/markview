@@ -25,7 +25,7 @@ import { FileIcon } from "./FileIcon";
 const MIN_WIDTH = 180;
 const MAX_WIDTH = 480;
 const DEFAULT_WIDTH = 260;
-const STORAGE_KEY = "mo-sidebar-width";
+const STORAGE_KEY = "markview-sidebar-width";
 
 function getInitialWidth(): number {
   const stored = localStorage.getItem(STORAGE_KEY);
@@ -67,8 +67,8 @@ function FileItem({
     <div className="relative group/file">
       <button
         className={`flex items-center gap-2 w-full px-3 py-2 border-none cursor-pointer text-left text-sm transition-colors duration-150 ${isActive
-            ? "bg-gh-bg-active text-gh-text font-semibold"
-            : "bg-transparent text-gh-text-secondary hover:bg-gh-bg-hover"
+          ? "bg-gh-bg-active text-gh-text font-semibold"
+          : "bg-transparent text-gh-text-secondary hover:bg-gh-bg-hover"
           }`}
         onClick={() => onFileSelect(file.id)}
         title={file.uploaded ? file.name : file.path}

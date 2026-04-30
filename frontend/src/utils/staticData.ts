@@ -1,6 +1,6 @@
 /**
  * Static data layer: when the SPA is exported as a static site, the server
- * injects `window.__MO_STATIC_DATA__` containing all groups, file contents,
+ * injects `window.__MARKVIEW_STATIC_DATA__` containing all groups, file contents,
  * raw assets (base64), graph, and outline data. This module detects that
  * data and provides it to the rest of the app so no API calls are needed.
  */
@@ -23,7 +23,7 @@ interface StaticDataPayload {
 
 declare global {
     interface Window {
-        __MO_STATIC_DATA__?: StaticDataPayload;
+        __MARKVIEW_STATIC_DATA__?: StaticDataPayload;
     }
 }
 
@@ -32,8 +32,8 @@ let _staticData: StaticDataPayload | null = null;
 /** Returns true if we're running in static/exported mode. */
 export function isStaticMode(): boolean {
     if (_staticData !== null) return true;
-    if (window.__MO_STATIC_DATA__) {
-        _staticData = window.__MO_STATIC_DATA__;
+    if (window.__MARKVIEW_STATIC_DATA__) {
+        _staticData = window.__MARKVIEW_STATIC_DATA__;
         return true;
     }
     return false;
@@ -41,8 +41,8 @@ export function isStaticMode(): boolean {
 
 export function getStaticData(): StaticDataPayload | null {
     if (_staticData) return _staticData;
-    if (window.__MO_STATIC_DATA__) {
-        _staticData = window.__MO_STATIC_DATA__;
+    if (window.__MARKVIEW_STATIC_DATA__) {
+        _staticData = window.__MARKVIEW_STATIC_DATA__;
         return _staticData;
     }
     return null;

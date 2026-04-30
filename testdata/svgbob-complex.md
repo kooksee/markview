@@ -1,6 +1,6 @@
 # SVG Bob Complex Demo
 
-This file is for testing `svgbob` / `bob` code block rendering in `mo`.
+This file is for testing `svgbob` / `bob` code block rendering in `markview`.
 
 ## 1) Distributed Architecture (svgbob)
 

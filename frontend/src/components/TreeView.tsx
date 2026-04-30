@@ -4,7 +4,7 @@ import { buildTree, getCommonPrefixPath, getPatternBaseDir, type TreeNode } from
 import { FileContextMenu } from "./FileContextMenu";
 import { FileIcon } from "./FileIcon";
 
-const COLLAPSED_STORAGE_KEY = "mo-sidebar-tree-collapsed";
+const COLLAPSED_STORAGE_KEY = "markview-sidebar-tree-collapsed";
 
 function getInitialCollapsed(group: string): Set<string> {
   try {
@@ -323,8 +323,8 @@ function FileNodeItem({
     <div className="relative group/file">
       <button
         className={`flex items-center gap-2 w-full px-3 py-2 border-none cursor-pointer text-left text-sm transition-colors duration-150 ${isActive
-            ? "bg-gh-bg-active text-gh-text font-semibold"
-            : "bg-transparent text-gh-text-secondary hover:bg-gh-bg-hover"
+          ? "bg-gh-bg-active text-gh-text font-semibold"
+          : "bg-transparent text-gh-text-secondary hover:bg-gh-bg-hover"
           }`}
         style={{ paddingLeft: `${depth * 16 + 12}px` }}
         onClick={() => onFileSelect(file.id)}

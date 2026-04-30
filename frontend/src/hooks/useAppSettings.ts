@@ -3,14 +3,14 @@ import { useCallback, useSyncExternalStore } from "react";
 /**
  * Unified localStorage-backed store.
  *
- * All mo-prefixed settings consolidated into a single JSON blob
- * (`mo-settings`), read/written atomically. Individual component
+ * All markview-prefixed settings consolidated into a single JSON blob
+ * (`markview-settings`), read/written atomically. Individual component
  * stores (sidebar width, toc width, etc.) remain independent because
  * they change at high frequency during drag-resize. This store is
  * for discrete preference values.
  */
 
-const STORAGE_KEY = "mo-app-settings";
+const STORAGE_KEY = "markview-app-settings";
 
 export interface AppSettings {
     sidebarViewModes: Record<string, string>;  // group → "flat" | "tree"

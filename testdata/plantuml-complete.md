@@ -1,6 +1,6 @@
 # PlantUML Complete Showcase
 
-这个文档用于完整检查 PlantUML 在 `mo` 里的渲染效果。  
+这个文档用于完整检查 PlantUML 在 `markview` 里的渲染效果。  
 建议重点观察：中文文本、主题切换、全屏/缩放/平移、复杂连线可读性。
 
 ---
@@ -24,12 +24,12 @@ skinparam sequence {
 
 autonumber
 actor 用户 as User
-participant "mo CLI" as CLI
-participant "mo Server" as Server
+participant "markview CLI" as CLI
+participant "markview Server" as Server
 participant "Kroki" as Kroki
 participant "Browser" as Browser
 
-User -> CLI: 执行 mo testdata/plantuml-complete.md
+User -> CLI: 执行 markview testdata/plantuml-complete.md
 CLI -> Server: 启动/复用实例
 CLI -> Server: 添加文件
 Server -> Browser: 推送页面
@@ -157,7 +157,7 @@ Viewer --> Api
 ```puml
 @startuml
 node "Developer Mac" {
-  artifact "mo binary"
+  artifact "markview binary"
   artifact "Markdown files"
 }
 
@@ -169,9 +169,9 @@ cloud "Kroki.io" {
   component "PlantUML Renderer"
 }
 
-"mo binary" --> "React App" : serve SPA + API
+"markview binary" --> "React App" : serve SPA + API
 "React App" --> "PlantUML Renderer" : render request
-"Markdown files" --> "mo binary" : watched files
+"Markdown files" --> "markview binary" : watched files
 @enduml
 ```
 
@@ -182,8 +182,8 @@ cloud "Kroki.io" {
 ```plantuml
 @startuml
 rectangle "User" as U
-rectangle "mo CLI" as CLI
-rectangle "mo Server" as S
+rectangle "markview CLI" as CLI
+rectangle "markview Server" as S
 rectangle "Frontend (React)" as FE
 rectangle "Kroki" as K
 

@@ -1,6 +1,6 @@
 import { useCallback, useSyncExternalStore } from "react";
 
-const STORAGE_KEY = "mo-mermaid-settings";
+const STORAGE_KEY = "markview-mermaid-settings";
 
 export interface MermaidSettings {
     nodeSpacing: number;

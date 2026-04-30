@@ -19,8 +19,8 @@ import (
 	"github.com/bmatcuk/doublestar/v4"
 	"github.com/fsnotify/fsnotify"
 	"github.com/k1LoW/donegroup"
-	"github.com/k1LoW/mo/internal/static"
-	"github.com/k1LoW/mo/version"
+	"github.com/kooksee/markview/internal/static"
+	"github.com/kooksee/markview/version"
 )
 
 type FileEntry struct {
@@ -545,7 +545,7 @@ type RestoreData struct {
 
 // WriteRestoreFile writes RestoreData to a temporary file and returns the path.
 func WriteRestoreFile(data RestoreData) (string, error) {
-	f, err := os.CreateTemp("", "mo-restore-*.json")
+	f, err := os.CreateTemp("", "markview-restore-*.json")
 	if err != nil {
 		return "", fmt.Errorf("failed to create temp file: %w", err)
 	}

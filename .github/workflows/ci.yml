@@ -12,7 +12,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        os: [ ubuntu-latest, macos-latest ]
     env:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     permissions:
@@ -31,18 +31,18 @@ jobs:
       - name: Set up pnpm
         uses: pnpm/action-setup@41ff72655975bd51cab0327fa583b6e92b6d3061 # v4.2.0
         with:
-          package_json_file: internal/frontend/package.json
+          package_json_file: frontend/package.json
 
       - name: Generate frontend assets
         run: go generate ./internal/static/
 
       - name: Run oxlint
         if: runner.os == 'Linux'
-        run: cd internal/frontend && pnpm install && pnpm run lint
+        run: cd frontend && pnpm install && pnpm run lint
 
       - name: Run oxfmt check
         if: runner.os == 'Linux'
-        run: cd internal/frontend && pnpm run fmt:check
+        run: cd frontend && pnpm run fmt:check
 
       - name: Run lint
         if: runner.os == 'Linux'

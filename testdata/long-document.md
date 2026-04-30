@@ -34,12 +34,12 @@ The Go server handles:
 
 ### 2.2 Frontend
 
-| Component | Responsibility |
-|-----------|---------------|
-| App | Routing, state management |
-| Sidebar | File tab navigation |
+| Component      | Responsibility                |
+| -------------- | ----------------------------- |
+| App            | Routing, state management     |
+| Sidebar        | File tab navigation           |
 | MarkdownViewer | Markdown rendering with Shiki |
-| ThemeToggle | Dark/light mode switch |
+| ThemeToggle    | Dark/light mode switch        |
 
 ## Section 3: Code Examples
 
@@ -110,15 +110,15 @@ export async function fetchFileContent(
 
 > **Q: How do I add a file to an existing session?**
 >
-> Run `mo another.md` in a separate terminal. It will detect the running server and add the file.
+> Run `markview another.md` in a separate terminal. It will detect the running server and add the file.
 
 > **Q: How do I change the port?**
 >
-> Use the `--port` flag: `mo --port 8080 file.md`
+> Use the `--port` flag: `markview --port 8080 file.md`
 
 > **Q: Can I group files?**
 >
-> Yes, use the `--target` flag: `mo --target docs README.md CHANGELOG.md`
+> Yes, use the `--target` flag: `markview --target docs README.md CHANGELOG.md`
 
 ## Section 6: Changelog
 

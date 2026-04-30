@@ -1,4 +1,4 @@
-PKG = github.com/k1LoW/mo
+PKG = github.com/kooksee/markview
 COMMIT = $(shell git rev-parse --short HEAD)
 
 BUILD_LDFLAGS = "-s -w -X $(PKG)/version.Revision=$(COMMIT)"
@@ -11,31 +11,31 @@ generate:
 	go generate ./internal/static/
 
 test:
-	cd internal/frontend && pnpm install && pnpm run test:coverage
+	cd frontend && pnpm install && pnpm run test:coverage
 	go test ./... -coverprofile=coverage.out -covermode=count -count=1
 
 build: generate
-	go build -ldflags=$(BUILD_LDFLAGS) -trimpath -o mo .
+	go build -ldflags=$(BUILD_LDFLAGS) -trimpath -o markview .
 
 install: generate
 	go install -ldflags=$(BUILD_LDFLAGS) -trimpath .
 
 dev: build
-	./mo -p 16275 --foreground $(ARGS)
+	./markview -p 16275 --foreground $(ARGS)
 
 screenshot: build
-	cd internal/frontend && pnpm run screenshots
+	cd frontend && pnpm run screenshots
 
 lint:
-	cd internal/frontend && pnpm install && pnpm run lint
+	cd frontend && pnpm install && pnpm run lint
 	golangci-lint run ./...
 	go vet -vettool=`which gostyle` -gostyle.config=$(PWD)/.gostyle.yml ./...
 
 fmt:
-	cd internal/frontend && pnpm install && pnpm run fmt
+	cd frontend && pnpm install && pnpm run fmt
 
 fmt-check:
-	cd internal/frontend && pnpm install && pnpm run fmt:check
+	cd frontend && pnpm install && pnpm run fmt:check
 
 depsdev:
 	go install github.com/Songmu/gocredits/cmd/gocredits@latest
@@ -45,7 +45,7 @@ credits: depsdev generate
 	go mod download
 	gocredits -w .
 	printf "\n================================================================\n\n" >> CREDITS
-	cat internal/frontend/CREDITS_FRONTEND >> CREDITS
+	cat frontend/CREDITS_FRONTEND >> CREDITS
 
 prerelease_for_tagpr: credits
 	git add CHANGELOG.md CREDITS go.mod go.sum
