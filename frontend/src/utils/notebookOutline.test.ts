@@ -1,11 +1,16 @@
 import { describe, expect, it } from "vitest";
 import {
     createNotebookOutlineItem,
+    getHiddenNotebookIndices,
+    indentNotebookItemsByIds,
     importHeadingsAsNotebookItems,
     indentNotebookItem,
     insertNotebookItemAfter,
+    moveNotebookItem,
+    outdentNotebookItemsByIds,
     outdentNotebookItem,
     removeNotebookItemAt,
+    removeNotebookItemsByIds,
     sanitizeNotebookItems,
     updateNotebookItemText,
 } from "./notebookOutline";
@@ -78,5 +83,64 @@ describe("notebookOutline utils", () => {
         expect(sanitized).toHaveLength(1);
         expect(sanitized[0].level).toBe(0);
         expect(sanitized[0].text).toBe("");
+    });
+
+    it("moves an item with its subtree up and down among siblings", () => {
+        const base = [
+            createNotebookOutlineItem({ id: "a", text: "A", level: 0 }),
+            createNotebookOutlineItem({ id: "a1", text: "A.1", level: 1 }),
+            createNotebookOutlineItem({ id: "b", text: "B", level: 0 }),
+            createNotebookOutlineItem({ id: "c", text: "C", level: 0 }),
+        ];
+
+        const movedUp = moveNotebookItem(base, 2, "up");
+        expect(movedUp.focusIndex).toBe(0);
+        expect(movedUp.items.map((item) => item.id)).toEqual(["b", "a", "a1", "c"]);
+
+        const movedDown = moveNotebookItem(base, 2, "down");
+        expect(movedDown.focusIndex).toBe(3);
+        expect(movedDown.items.map((item) => item.id)).toEqual(["a", "a1", "c", "b"]);
+    });
+
+    it("computes hidden descendants from collapsed parent items", () => {
+        const base = [
+            createNotebookOutlineItem({ id: "a", text: "A", level: 0 }),
+            createNotebookOutlineItem({ id: "a1", text: "A.1", level: 1 }),
+            createNotebookOutlineItem({ id: "a2", text: "A.2", level: 1 }),
+            createNotebookOutlineItem({ id: "b", text: "B", level: 0 }),
+        ];
+
+        const hidden = getHiddenNotebookIndices(base, new Set(["a"]));
+        expect([...hidden]).toEqual([1, 2]);
+
+        const noneHidden = getHiddenNotebookIndices(base, new Set(["a1"]));
+        expect([...noneHidden]).toEqual([]);
+    });
+
+    it("supports batch indent and outdent by selected ids", () => {
+        const base = [
+            createNotebookOutlineItem({ id: "a", text: "A", level: 0 }),
+            createNotebookOutlineItem({ id: "b", text: "B", level: 0 }),
+            createNotebookOutlineItem({ id: "c", text: "C", level: 0 }),
+        ];
+
+        const indented = indentNotebookItemsByIds(base, new Set(["b", "c"]));
+        expect(indented.map((item) => item.level)).toEqual([0, 1, 1]);
+
+        const outdented = outdentNotebookItemsByIds(indented, ["b", "c"]);
+        expect(outdented.map((item) => item.level)).toEqual([0, 0, 0]);
+    });
+
+    it("batch remove deletes selected parent subtree and keeps valid focus", () => {
+        const base = [
+            createNotebookOutlineItem({ id: "a", text: "A", level: 0 }),
+            createNotebookOutlineItem({ id: "a1", text: "A.1", level: 1 }),
+            createNotebookOutlineItem({ id: "b", text: "B", level: 0 }),
+            createNotebookOutlineItem({ id: "c", text: "C", level: 0 }),
+        ];
+
+        const removed = removeNotebookItemsByIds(base, new Set(["a", "c"]));
+        expect(removed.items.map((item) => item.id)).toEqual(["b"]);
+        expect(removed.focusIndex).toBe(0);
     });
 });
