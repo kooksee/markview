@@ -13,6 +13,11 @@ interface DocumentMindmapPanelProps {
 }
 
 const DIRECTION_STORAGE_KEY = "markview-document-mindmap-direction";
+const DEPTH_STORAGE_KEY = "markview-document-mindmap-depth";
+
+const MINDMAP_MIN_ZOOM = 0.45;
+const MINDMAP_MAX_ZOOM = 2.8;
+const MINDMAP_ZOOM_STEP = 0.15;
 
 const BRANCH_PALETTE = [
     { stroke: "#5B8FF9", fillLight: "#EEF4FF", fillDark: "#1B2B4D" },
@@ -38,7 +43,14 @@ export function DocumentMindmapPanel({
     fileName,
     onNavigateHeading,
 }: DocumentMindmapPanelProps) {
-    const [depthMode, setDepthMode] = useState<"summary" | "full">("summary");
+    const [depthMode, setDepthMode] = useState<"summary" | "full">(() => {
+        try {
+            const raw = localStorage.getItem(DEPTH_STORAGE_KEY);
+            return raw === "summary" ? "summary" : "full";
+        } catch {
+            return "full";
+        }
+    });
     const [layoutDirection, setLayoutDirection] = useState<"H" | "V">(() => {
         try {
             const raw = localStorage.getItem(DIRECTION_STORAGE_KEY);
@@ -47,9 +59,18 @@ export function DocumentMindmapPanel({
             return "H";
         }
     });
+    const [zoomPercent, setZoomPercent] = useState(100);
     const [themeVersion, setThemeVersion] = useState(0);
     const containerRef = useRef<HTMLDivElement>(null);
     const graphRef = useRef<InstanceType<typeof Graph> | null>(null);
+    const updateZoomIndicator = useCallback(() => {
+        const graph = graphRef.current;
+        if (!graph || graph.destroyed) return;
+        const zoom = graph.getZoom();
+        if (Number.isFinite(zoom) && zoom > 0) {
+            setZoomPercent(Math.round(zoom * 100));
+        }
+    }, []);
     const graphTree = useMemo(
         () => buildDocumentMindmapGraphTree(headings, fileName || "当前文档"),
         [headings, fileName],
@@ -101,6 +122,14 @@ export function DocumentMindmapPanel({
     }, []);
 
     useEffect(() => {
+        try {
+            localStorage.setItem(DEPTH_STORAGE_KEY, depthMode);
+        } catch {
+            /* ignore */
+        }
+    }, [depthMode]);
+
+    useEffect(() => {
         if (!containerRef.current || headings.length === 0) {
             return;
         }
@@ -120,8 +149,8 @@ export function DocumentMindmapPanel({
                 getHeight: () => 42,
                 getWidth: (node: { id: string; value?: string; data?: { value?: string } }) =>
                     getNodeWidth((node.value ?? node.data?.value ?? "") as string, node.id === "document-root"),
-                getVGap: () => 20,
-                getHGap: () => 72,
+                getVGap: () => (depthMode === "full" ? 22 : 26),
+                getHGap: () => (depthMode === "full" ? 86 : 96),
                 animation: false,
             },
             node: {
@@ -160,7 +189,7 @@ export function DocumentMindmapPanel({
                 },
             },
             edge: {
-                type: "cubic-horizontal",
+                type: layoutDirection === "H" ? "cubic-horizontal" : "cubic-vertical",
                 style: (edgeDatum: { target: string }) => {
                     const targetData = graph?.getNodeData(edgeDatum.target);
                     const data = targetData?.data as DocumentMindmapGraphNode["data"] | undefined;
@@ -180,6 +209,10 @@ export function DocumentMindmapPanel({
         });
 
         graph.render();
+        void graph
+            .fitView()
+            .then(() => updateZoomIndicator())
+            .catch(() => updateZoomIndicator());
 
         const handleClick = (evt: unknown) => {
             const e = evt as { target?: { id?: string } };
@@ -194,22 +227,49 @@ export function DocumentMindmapPanel({
         graph.on("node:click", handleClick as (evt: unknown) => void);
         graphRef.current = graph;
 
+        const syncZoomFromWheel = () => {
+            requestAnimationFrame(() => updateZoomIndicator());
+        };
+        containerRef.current.addEventListener("wheel", syncZoomFromWheel, { passive: true });
+
+        let resizeFrame = 0;
         const resizeObserver = new ResizeObserver(() => {
-            if (containerRef.current && graphRef.current && !graphRef.current.destroyed) {
-                graphRef.current.setSize(containerRef.current.offsetWidth, containerRef.current.offsetHeight);
+            if (resizeFrame !== 0) {
+                cancelAnimationFrame(resizeFrame);
             }
+            resizeFrame = requestAnimationFrame(() => {
+                if (containerRef.current && graphRef.current && !graphRef.current.destroyed) {
+                    graphRef.current.setSize(containerRef.current.offsetWidth, containerRef.current.offsetHeight);
+                    void graphRef.current
+                        .fitView()
+                        .then(() => updateZoomIndicator())
+                        .catch(() => updateZoomIndicator());
+                }
+            });
         });
         resizeObserver.observe(containerRef.current);
 
         return () => {
             resizeObserver.disconnect();
+            if (resizeFrame !== 0) {
+                cancelAnimationFrame(resizeFrame);
+            }
+            containerRef.current?.removeEventListener("wheel", syncZoomFromWheel);
             if (graph && !graph.destroyed) {
                 graph.off("node:click", handleClick as (evt: unknown) => void);
                 graph.destroy();
             }
             graphRef.current = null;
         };
-    }, [graphData, headings.length, layoutDirection, onNavigateHeading, themeVersion]);
+    }, [
+        depthMode,
+        graphData,
+        headings.length,
+        layoutDirection,
+        onNavigateHeading,
+        themeVersion,
+        updateZoomIndicator,
+    ]);
 
     const toggleLayoutDirection = useCallback(() => {
         setLayoutDirection((prev) => {
@@ -223,6 +283,44 @@ export function DocumentMindmapPanel({
         });
     }, []);
 
+    const zoomTo = useCallback(
+        (value: number) => {
+            const graph = graphRef.current;
+            if (!graph || graph.destroyed) return;
+            const next = Math.max(MINDMAP_MIN_ZOOM, Math.min(MINDMAP_MAX_ZOOM, value));
+            void graph
+                .zoomTo(next)
+                .then(() => updateZoomIndicator())
+                .catch(() => updateZoomIndicator());
+        },
+        [updateZoomIndicator],
+    );
+
+    const handleZoomIn = useCallback(() => {
+        const graph = graphRef.current;
+        if (!graph || graph.destroyed) return;
+        zoomTo(graph.getZoom() + MINDMAP_ZOOM_STEP);
+    }, [zoomTo]);
+
+    const handleZoomOut = useCallback(() => {
+        const graph = graphRef.current;
+        if (!graph || graph.destroyed) return;
+        zoomTo(graph.getZoom() - MINDMAP_ZOOM_STEP);
+    }, [zoomTo]);
+
+    const handleZoomReset = useCallback(() => {
+        zoomTo(1);
+    }, [zoomTo]);
+
+    const handleFitView = useCallback(() => {
+        const graph = graphRef.current;
+        if (!graph || graph.destroyed) return;
+        void graph
+            .fitView()
+            .then(() => updateZoomIndicator())
+            .catch(() => updateZoomIndicator());
+    }, [updateZoomIndicator]);
+
     if (headings.length === 0) {
         return (
             <div className="flex h-full items-center justify-center text-sm text-gh-text-secondary">
@@ -233,11 +331,43 @@ export function DocumentMindmapPanel({
 
     return (
         <div className="flex h-full flex-col">
-            <div className="mb-2 flex items-center justify-between gap-2">
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                 <div className="text-xs text-gh-text-secondary">
-                    标题已直接转为脑图（接近 XMind/幕布交互：缩放、拖拽、点击节点定位）
+                    标题已直接转为脑图（滚轮缩放、拖拽平移、点击节点定位）
                 </div>
                 <div className="flex items-center gap-1">
+                    <button
+                        type="button"
+                        className="rounded-md border border-gh-border bg-transparent px-2 py-1 text-xs text-gh-text-secondary hover:bg-gh-bg-hover"
+                        onClick={handleZoomOut}
+                        title="缩小"
+                    >
+                        －
+                    </button>
+                    <button
+                        type="button"
+                        className="rounded-md border border-gh-border bg-transparent px-2 py-1 text-xs text-gh-text-secondary hover:bg-gh-bg-hover"
+                        onClick={handleZoomReset}
+                        title="重置到 100%"
+                    >
+                        {zoomPercent}%
+                    </button>
+                    <button
+                        type="button"
+                        className="rounded-md border border-gh-border bg-transparent px-2 py-1 text-xs text-gh-text-secondary hover:bg-gh-bg-hover"
+                        onClick={handleZoomIn}
+                        title="放大"
+                    >
+                        ＋
+                    </button>
+                    <button
+                        type="button"
+                        className="rounded-md border border-gh-border bg-transparent px-2 py-1 text-xs text-gh-text-secondary hover:bg-gh-bg-hover"
+                        onClick={handleFitView}
+                        title="适配到当前面板"
+                    >
+                        适配
+                    </button>
                     <button
                         type="button"
                         className="rounded-md border border-gh-border bg-transparent px-2 py-1 text-xs text-gh-text-secondary hover:bg-gh-bg-hover"
