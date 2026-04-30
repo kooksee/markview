@@ -15,6 +15,7 @@ import { fetchFileContent, openRelativeFile } from "../hooks/useApi";
 import { getMermaidSettings, useMermaidSettingsRevision, type MermaidSettings } from "../hooks/useMermaidSettings";
 import { RawToggle } from "./RawToggle";
 import { TocToggle } from "./TocToggle";
+import { MindmapToggle } from "./MindmapToggle";
 import { CopyButton } from "./CopyButton";
 import { PdfExportButton } from "./PdfExportButton";
 import { RemoveButton } from "./RemoveButton";
@@ -206,6 +207,8 @@ interface MarkdownViewerProps {
   onContentRendered?: () => void;
   isTocOpen: boolean;
   onTocToggle: () => void;
+  isMindmapOpen: boolean;
+  onMindmapToggle: () => void;
   onRemoveFile: () => void;
   isWide: boolean;
   searchJumpRequest?: {
@@ -1774,6 +1777,8 @@ export function MarkdownViewer({
   onContentRendered,
   isTocOpen,
   onTocToggle,
+  isMindmapOpen,
+  onMindmapToggle,
   onRemoveFile,
   isWide,
   searchJumpRequest,
@@ -2166,6 +2171,7 @@ export function MarkdownViewer({
       </article>
       <div className="shrink-0 sticky top-0 self-start flex flex-col gap-2 -mr-4 -mt-4">
         <TocToggle isTocOpen={isTocOpen} onToggle={onTocToggle} />
+        <MindmapToggle isMindmapOpen={isMindmapOpen} onToggle={onMindmapToggle} />
         <RawToggle isRaw={isRawView} onToggle={() => setIsRawView((v) => !v)} />
         <CopyButton content={content} />
         <PdfExportButton articleRef={articleRef} fileName={fileName} />

@@ -12,6 +12,10 @@ vi.mock("./TocToggle", () => ({
     TocToggle: () => null,
 }));
 
+vi.mock("./MindmapToggle", () => ({
+    MindmapToggle: () => null,
+}));
+
 vi.mock("./RawToggle", () => ({
     RawToggle: () => null,
 }));
@@ -55,6 +59,8 @@ describe("MarkdownViewer link opening", () => {
                 onHeadingsChange={() => { }}
                 isTocOpen={false}
                 onTocToggle={() => { }}
+                isMindmapOpen={false}
+                onMindmapToggle={() => { }}
                 onRemoveFile={() => { }}
                 isWide={false}
             />,
@@ -91,6 +97,8 @@ describe("MarkdownViewer link opening", () => {
                 onHeadingsChange={() => { }}
                 isTocOpen={false}
                 onTocToggle={() => { }}
+                isMindmapOpen={false}
+                onMindmapToggle={() => { }}
                 onRemoveFile={() => { }}
                 isWide={false}
             />,
@@ -130,6 +138,8 @@ describe("MarkdownViewer link opening", () => {
                 onHeadingsChange={() => { }}
                 isTocOpen={false}
                 onTocToggle={() => { }}
+                isMindmapOpen={false}
+                onMindmapToggle={() => { }}
                 onRemoveFile={() => { }}
                 isWide={false}
             />,

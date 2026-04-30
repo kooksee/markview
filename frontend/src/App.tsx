@@ -63,6 +63,7 @@ export function App() {
   const [activeFileId, setActiveFileId] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [tocOpen, setTocOpen] = useState(false);
+  const [mindmapOpen, setMindmapOpen] = useState(false);
   const [headings, setHeadings] = useState<TocHeading[]>([]);
   const [contentRevision, setContentRevision] = useState(0);
   const [searchQuery, setSearchQuery] = useState<string | null>(null);
@@ -701,6 +702,8 @@ export function App() {
                         onContentRendered={onContentRendered}
                         isTocOpen={tocOpen}
                         onTocToggle={() => setTocOpen((v) => !v)}
+                        isMindmapOpen={mindmapOpen}
+                        onMindmapToggle={() => setMindmapOpen((v) => !v)}
                         onRemoveFile={handleRemoveFile}
                         isWide={isWide}
                         searchJumpRequest={
@@ -728,6 +731,8 @@ export function App() {
                 onContentRendered={onContentRendered}
                 isTocOpen={tocOpen}
                 onTocToggle={() => setTocOpen((v) => !v)}
+                isMindmapOpen={mindmapOpen}
+                onMindmapToggle={() => setMindmapOpen((v) => !v)}
                 onRemoveFile={handleRemoveFile}
                 isWide={isWide}
                 searchJumpRequest={
@@ -742,12 +747,27 @@ export function App() {
             )}
           </div>
         </main>
-        {tocOpen && (
-          <TocPanel
-            headings={headings}
-            activeHeadingId={activeHeadingId}
-            onHeadingClick={handleHeadingClick}
-          />
+        {(mindmapOpen || tocOpen) && (
+          <div className="flex h-full shrink-0">
+            {mindmapOpen && (
+              <aside className="flex h-full min-h-0 w-[420px] min-w-[300px] max-w-[620px] shrink-0 flex-col border-l border-gh-border bg-gh-bg-sidebar p-2">
+                <div className="min-h-0 flex-1 overflow-hidden">
+                  <DocumentMindmapPanel
+                    headings={headings}
+                    fileName={activeFileName}
+                    onNavigateHeading={handleHeadingClick}
+                  />
+                </div>
+              </aside>
+            )}
+            {tocOpen && (
+              <TocPanel
+                headings={headings}
+                activeHeadingId={activeHeadingId}
+                onHeadingClick={handleHeadingClick}
+              />
+            )}
+          </div>
         )}
       </div>
       <GlobalSearchModal
