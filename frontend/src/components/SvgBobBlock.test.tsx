@@ -61,7 +61,7 @@ describe("SvgBobBlock", () => {
         render(<SvgBobBlock code={"+---+"} />);
 
         await waitFor(() => {
-            expect(screen.getByText("图表渲染失败，已回退为代码块显示。")).toBeInTheDocument();
+            expect(screen.getByText("图表渲染失败：语法可能有误，请检查图表代码（svgbob parse error）。已回退为代码块显示。")).toBeInTheDocument();
             expect(screen.getByText("+---+")).toBeInTheDocument();
             expect(screen.queryByRole("img", { name: "SVG Bob diagram" })).not.toBeInTheDocument();
             expect(screen.getByTitle("Copy code")).toBeInTheDocument();

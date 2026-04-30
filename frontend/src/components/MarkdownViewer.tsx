@@ -149,6 +149,54 @@ function normalizeSvgBobSvg(svg: string, isDark: boolean): string {
   }
 }
 
+const DIAGRAM_ERROR_MESSAGE_MAX_LEN = 180;
+
+function normalizeDiagramErrorMessage(err: unknown, fallback: string): string {
+  let message = fallback;
+
+  if (err instanceof Error && err.message.trim().length > 0) {
+    message = err.message.trim();
+  } else if (typeof err === "string" && err.trim().length > 0) {
+    message = err.trim();
+  }
+
+  const compact = message.replace(/\s+/g, " ");
+  if (compact.length <= DIAGRAM_ERROR_MESSAGE_MAX_LEN) {
+    return formatDiagramErrorMessageByType(compact, fallback);
+  }
+  return formatDiagramErrorMessageByType(`${compact.slice(0, DIAGRAM_ERROR_MESSAGE_MAX_LEN)}…`, fallback);
+}
+
+function formatDiagramErrorMessageByType(message: string, fallback: string): string {
+  const lower = message.toLowerCase();
+
+  const isTimeout = /(timeout|timed out|etimedout|abort(ed)?)/.test(lower);
+  if (isTimeout) {
+    return `渲染超时，请稍后重试（${message}）`;
+  }
+
+  const isNetwork = /(failed to fetch|network\s*error|econnrefused|enotfound|eai_again|connection\s*reset|cors)/.test(lower);
+  if (isNetwork) {
+    return `网络请求失败，请检查网络或服务可用性（${message}）`;
+  }
+
+  const isService = /(status\s*[45]\d\d|http\s*[45]\d\d|service unavailable|bad gateway|gateway timeout|internal server error)/.test(lower);
+  if (isService) {
+    return `渲染服务异常，请稍后重试（${message}）`;
+  }
+
+  const isSyntax = /(parse|syntax|unexpected token|lex(ical)? error|invalid|unterminated)/.test(lower);
+  if (isSyntax) {
+    return `语法可能有误，请检查图表代码（${message}）`;
+  }
+
+  if (message === fallback) {
+    return fallback;
+  }
+
+  return message;
+}
+
 interface MarkdownViewerProps {
   fileId: string;
   fileName: string;
@@ -593,6 +641,7 @@ export function MermaidBlock({ code }: { code: string }) {
   const settingsRevision = useMermaidSettingsRevision();
   const [svg, setSvg] = useState("");
   const [renderStatus, setRenderStatus] = useState<"pending" | "rendered" | "failed">("pending");
+  const [renderError, setRenderError] = useState<string | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
@@ -731,6 +780,7 @@ export function MermaidBlock({ code }: { code: string }) {
     const doRender = async () => {
       const width = resolveRenderWidth();
       setRenderStatus("pending");
+      setRenderError(null);
       try {
         let renderedSvg = "";
         const canUseBeautiful = supportsBeautifulMermaid(normalizedCode);
@@ -777,9 +827,10 @@ export function MermaidBlock({ code }: { code: string }) {
           setSvg(normalizeMermaidSvg(renderedSvg, nextLayout, width));
           setRenderStatus("rendered");
         }
-      } catch {
+      } catch (err) {
         if (!cancelled) {
           setSvg("");
+          setRenderError(normalizeDiagramErrorMessage(err, "Mermaid 渲染失败"));
           setRenderStatus("failed");
         }
       }
@@ -874,7 +925,7 @@ export function MermaidBlock({ code }: { code: string }) {
     <div ref={containerRef} data-mermaid-render-status={renderStatus} className="relative group">
       {renderStatus === "failed" && (
         <div className="mb-2 rounded-md border border-gh-border bg-gh-bg-subtle px-2 py-1 text-xs text-gh-text-secondary">
-          图表渲染失败，已回退为代码块显示。
+          图表渲染失败：{renderError ?? "未知错误"}。已回退为代码块显示。
         </div>
       )}
       <pre>
@@ -888,6 +939,7 @@ export function MermaidBlock({ code }: { code: string }) {
 export function SvgBobBlock({ code }: { code: string }) {
   const [svgUrl, setSvgUrl] = useState<string | null>(null);
   const [renderStatus, setRenderStatus] = useState<"pending" | "rendered" | "failed">("pending");
+  const [renderError, setRenderError] = useState<string | null>(null);
   const [themeVersion, setThemeVersion] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [zoom, setZoom] = useState(1);
@@ -990,6 +1042,7 @@ export function SvgBobBlock({ code }: { code: string }) {
 
     const doRender = async () => {
       setRenderStatus("pending");
+      setRenderError(null);
       try {
         const renderedSvg = await renderSvgBob(code);
         const normalizedSvg = normalizeSvgBobSvg(renderedSvg, getMermaidTheme() === "dark");
@@ -1005,13 +1058,14 @@ export function SvgBobBlock({ code }: { code: string }) {
         } else {
           URL.revokeObjectURL(nextUrl);
         }
-      } catch {
+      } catch (err) {
         if (!cancelled) {
           if (objectUrlRef.current) {
             URL.revokeObjectURL(objectUrlRef.current);
             objectUrlRef.current = null;
           }
           setSvgUrl(null);
+          setRenderError(normalizeDiagramErrorMessage(err, "SVG Bob 渲染失败"));
           setRenderStatus("failed");
         }
       }
@@ -1075,7 +1129,7 @@ export function SvgBobBlock({ code }: { code: string }) {
     <div className="relative group" data-svgbob-render-status={renderStatus}>
       {renderStatus === "failed" && (
         <div className="mb-2 rounded-md border border-gh-border bg-gh-bg-subtle px-2 py-1 text-xs text-gh-text-secondary">
-          图表渲染失败，已回退为代码块显示。
+          图表渲染失败：{renderError ?? "未知错误"}。已回退为代码块显示。
         </div>
       )}
       <pre>
@@ -1089,6 +1143,7 @@ export function SvgBobBlock({ code }: { code: string }) {
 export function PlantUmlBlock({ code }: { code: string }) {
   const [svgUrl, setSvgUrl] = useState<string | null>(null);
   const [renderStatus, setRenderStatus] = useState<"pending" | "rendered" | "failed">("pending");
+  const [renderError, setRenderError] = useState<string | null>(null);
   const [themeVersion, setThemeVersion] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [zoom, setZoom] = useState(1);
@@ -1191,6 +1246,7 @@ export function PlantUmlBlock({ code }: { code: string }) {
 
     const doRender = async () => {
       setRenderStatus("pending");
+      setRenderError(null);
       try {
         const nextCode = injectPlantUmlThemePreset(code, getMermaidTheme() === "dark");
         const svg = await renderPlantUml(nextCode);
@@ -1206,13 +1262,14 @@ export function PlantUmlBlock({ code }: { code: string }) {
         } else {
           URL.revokeObjectURL(nextUrl);
         }
-      } catch {
+      } catch (err) {
         if (!cancelled) {
           if (objectUrlRef.current) {
             URL.revokeObjectURL(objectUrlRef.current);
             objectUrlRef.current = null;
           }
           setSvgUrl(null);
+          setRenderError(normalizeDiagramErrorMessage(err, "PlantUML 渲染失败"));
           setRenderStatus("failed");
         }
       }
@@ -1272,7 +1329,7 @@ export function PlantUmlBlock({ code }: { code: string }) {
     <div className="relative group" data-plantuml-render-status={renderStatus}>
       {renderStatus === "failed" && (
         <div className="mb-2 rounded-md border border-gh-border bg-gh-bg-subtle px-2 py-1 text-xs text-gh-text-secondary">
-          图表渲染失败，已回退为代码块显示。
+          图表渲染失败：{renderError ?? "未知错误"}。已回退为代码块显示。
         </div>
       )}
       <pre>
