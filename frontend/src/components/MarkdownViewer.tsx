@@ -1145,6 +1145,7 @@ export function PlantUmlBlock({ code }: { code: string }) {
   const [renderStatus, setRenderStatus] = useState<"pending" | "rendered" | "failed">("pending");
   const [renderError, setRenderError] = useState<string | null>(null);
   const [themeVersion, setThemeVersion] = useState(0);
+  const [retryVersion, setRetryVersion] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
@@ -1228,6 +1229,12 @@ export function PlantUmlBlock({ code }: { code: string }) {
     panStartRef.current = null;
   }, []);
 
+  const handleRetryRender = useCallback(() => {
+    setRenderStatus("pending");
+    setRenderError(null);
+    setRetryVersion((prev) => prev + 1);
+  }, []);
+
   useEffect(() => {
     const observer = new MutationObserver(() => {
       setThemeVersion((v) => v + 1);
@@ -1284,7 +1291,7 @@ export function PlantUmlBlock({ code }: { code: string }) {
         objectUrlRef.current = null;
       }
     };
-  }, [code, themeVersion]);
+  }, [code, themeVersion, retryVersion]);
 
   if (svgUrl) {
     const canvasStyle = isFullscreen
@@ -1329,7 +1336,14 @@ export function PlantUmlBlock({ code }: { code: string }) {
     <div className="relative group" data-plantuml-render-status={renderStatus}>
       {renderStatus === "failed" && (
         <div className="mb-2 rounded-md border border-gh-border bg-gh-bg-subtle px-2 py-1 text-xs text-gh-text-secondary">
-          图表渲染失败：{renderError ?? "未知错误"}。已回退为代码块显示。
+          <p>图表渲染失败：{renderError ?? "未知错误"}。已回退为代码块显示。</p>
+          <button
+            className="mt-2 inline-flex items-center rounded-md border border-gh-border bg-gh-bg-secondary px-2 py-1 text-xs text-gh-text-secondary transition-colors duration-150 hover:border-gh-text-secondary hover:text-gh-text-primary cursor-pointer"
+            onClick={handleRetryRender}
+            title="Retry PlantUML render"
+          >
+            重试渲染
+          </button>
         </div>
       )}
       <pre>
