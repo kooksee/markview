@@ -41,12 +41,13 @@ describe("MermaidBlock", () => {
     render(<MermaidBlock code="graph TD; A-->B" />);
 
     await waitFor(() => {
-      expect(screen.getByTitle("Copy code")).toBeInTheDocument();
+      const beautifulCalls = renderMermaidSVGMock.mock.calls.length;
+      const mermaidCalls = vi.mocked(mermaid.render).mock.calls.length;
+      expect(beautifulCalls + mermaidCalls).toBeGreaterThan(0);
     });
 
     const beautifulCalls = renderMermaidSVGMock.mock.calls.length;
     const mermaidCalls = vi.mocked(mermaid.render).mock.calls.length;
-    expect(beautifulCalls + mermaidCalls).toBeGreaterThan(0);
     if (beautifulCalls > 0) {
       expect(mermaidCalls).toBe(0);
     }
@@ -92,9 +93,22 @@ describe("MermaidBlock", () => {
     render(<MermaidBlock code="invalid mermaid" />);
 
     await waitFor(() => {
+      expect(screen.getByText("图表渲染失败：语法可能有误，请检查图表代码（parse error）。已回退为代码块显示。")).toBeInTheDocument();
       expect(screen.getByTitle("Copy code")).toBeInTheDocument();
     });
     expect(screen.getByText("invalid mermaid")).toBeInTheDocument();
+  });
+
+  it("shows timeout-oriented hint when rendering times out", async () => {
+    vi.mocked(mermaid.render).mockRejectedValue(new Error("render timeout after 3000ms"));
+
+    render(<MermaidBlock code="graph TD; A-->B" />);
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("图表渲染失败：渲染超时，请稍后重试（render timeout after 3000ms）。已回退为代码块显示。"),
+      ).toBeInTheDocument();
+    });
   });
 
   it("copies original mermaid code to clipboard on click", async () => {

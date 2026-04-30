@@ -15,6 +15,7 @@ import { fetchFileContent, openRelativeFile } from "../hooks/useApi";
 import { getMermaidSettings, useMermaidSettingsRevision, type MermaidSettings } from "../hooks/useMermaidSettings";
 import { RawToggle } from "./RawToggle";
 import { TocToggle } from "./TocToggle";
+import { MindmapToggle } from "./MindmapToggle";
 import { CopyButton } from "./CopyButton";
 import { PdfExportButton } from "./PdfExportButton";
 import { RemoveButton } from "./RemoveButton";
@@ -149,6 +150,54 @@ function normalizeSvgBobSvg(svg: string, isDark: boolean): string {
   }
 }
 
+const DIAGRAM_ERROR_MESSAGE_MAX_LEN = 180;
+
+function normalizeDiagramErrorMessage(err: unknown, fallback: string): string {
+  let message = fallback;
+
+  if (err instanceof Error && err.message.trim().length > 0) {
+    message = err.message.trim();
+  } else if (typeof err === "string" && err.trim().length > 0) {
+    message = err.trim();
+  }
+
+  const compact = message.replace(/\s+/g, " ");
+  if (compact.length <= DIAGRAM_ERROR_MESSAGE_MAX_LEN) {
+    return formatDiagramErrorMessageByType(compact, fallback);
+  }
+  return formatDiagramErrorMessageByType(`${compact.slice(0, DIAGRAM_ERROR_MESSAGE_MAX_LEN)}…`, fallback);
+}
+
+function formatDiagramErrorMessageByType(message: string, fallback: string): string {
+  const lower = message.toLowerCase();
+
+  const isTimeout = /(timeout|timed out|etimedout|abort(ed)?)/.test(lower);
+  if (isTimeout) {
+    return `渲染超时，请稍后重试（${message}）`;
+  }
+
+  const isNetwork = /(failed to fetch|network\s*error|econnrefused|enotfound|eai_again|connection\s*reset|cors)/.test(lower);
+  if (isNetwork) {
+    return `网络请求失败，请检查网络或服务可用性（${message}）`;
+  }
+
+  const isService = /(status\s*[45]\d\d|http\s*[45]\d\d|service unavailable|bad gateway|gateway timeout|internal server error)/.test(lower);
+  if (isService) {
+    return `渲染服务异常，请稍后重试（${message}）`;
+  }
+
+  const isSyntax = /(parse|syntax|unexpected token|lex(ical)? error|invalid|unterminated)/.test(lower);
+  if (isSyntax) {
+    return `语法可能有误，请检查图表代码（${message}）`;
+  }
+
+  if (message === fallback) {
+    return fallback;
+  }
+
+  return message;
+}
+
 interface MarkdownViewerProps {
   fileId: string;
   fileName: string;
@@ -158,6 +207,8 @@ interface MarkdownViewerProps {
   onContentRendered?: () => void;
   isTocOpen: boolean;
   onTocToggle: () => void;
+  isMindmapOpen: boolean;
+  onMindmapToggle: () => void;
   onRemoveFile: () => void;
   isWide: boolean;
   searchJumpRequest?: {
@@ -593,6 +644,7 @@ export function MermaidBlock({ code }: { code: string }) {
   const settingsRevision = useMermaidSettingsRevision();
   const [svg, setSvg] = useState("");
   const [renderStatus, setRenderStatus] = useState<"pending" | "rendered" | "failed">("pending");
+  const [renderError, setRenderError] = useState<string | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
@@ -731,6 +783,7 @@ export function MermaidBlock({ code }: { code: string }) {
     const doRender = async () => {
       const width = resolveRenderWidth();
       setRenderStatus("pending");
+      setRenderError(null);
       try {
         let renderedSvg = "";
         const canUseBeautiful = supportsBeautifulMermaid(normalizedCode);
@@ -777,9 +830,10 @@ export function MermaidBlock({ code }: { code: string }) {
           setSvg(normalizeMermaidSvg(renderedSvg, nextLayout, width));
           setRenderStatus("rendered");
         }
-      } catch {
+      } catch (err) {
         if (!cancelled) {
           setSvg("");
+          setRenderError(normalizeDiagramErrorMessage(err, "Mermaid 渲染失败"));
           setRenderStatus("failed");
         }
       }
@@ -872,6 +926,11 @@ export function MermaidBlock({ code }: { code: string }) {
   }
   return (
     <div ref={containerRef} data-mermaid-render-status={renderStatus} className="relative group">
+      {renderStatus === "failed" && (
+        <div className="mb-2 rounded-md border border-gh-border bg-gh-bg-subtle px-2 py-1 text-xs text-gh-text-secondary">
+          图表渲染失败：{renderError ?? "未知错误"}。已回退为代码块显示。
+        </div>
+      )}
       <pre>
         <code>{code}</code>
       </pre>
@@ -883,6 +942,7 @@ export function MermaidBlock({ code }: { code: string }) {
 export function SvgBobBlock({ code }: { code: string }) {
   const [svgUrl, setSvgUrl] = useState<string | null>(null);
   const [renderStatus, setRenderStatus] = useState<"pending" | "rendered" | "failed">("pending");
+  const [renderError, setRenderError] = useState<string | null>(null);
   const [themeVersion, setThemeVersion] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [zoom, setZoom] = useState(1);
@@ -985,6 +1045,7 @@ export function SvgBobBlock({ code }: { code: string }) {
 
     const doRender = async () => {
       setRenderStatus("pending");
+      setRenderError(null);
       try {
         const renderedSvg = await renderSvgBob(code);
         const normalizedSvg = normalizeSvgBobSvg(renderedSvg, getMermaidTheme() === "dark");
@@ -1000,13 +1061,14 @@ export function SvgBobBlock({ code }: { code: string }) {
         } else {
           URL.revokeObjectURL(nextUrl);
         }
-      } catch {
+      } catch (err) {
         if (!cancelled) {
           if (objectUrlRef.current) {
             URL.revokeObjectURL(objectUrlRef.current);
             objectUrlRef.current = null;
           }
           setSvgUrl(null);
+          setRenderError(normalizeDiagramErrorMessage(err, "SVG Bob 渲染失败"));
           setRenderStatus("failed");
         }
       }
@@ -1068,6 +1130,11 @@ export function SvgBobBlock({ code }: { code: string }) {
 
   return (
     <div className="relative group" data-svgbob-render-status={renderStatus}>
+      {renderStatus === "failed" && (
+        <div className="mb-2 rounded-md border border-gh-border bg-gh-bg-subtle px-2 py-1 text-xs text-gh-text-secondary">
+          图表渲染失败：{renderError ?? "未知错误"}。已回退为代码块显示。
+        </div>
+      )}
       <pre>
         <code>{code}</code>
       </pre>
@@ -1079,7 +1146,9 @@ export function SvgBobBlock({ code }: { code: string }) {
 export function PlantUmlBlock({ code }: { code: string }) {
   const [svgUrl, setSvgUrl] = useState<string | null>(null);
   const [renderStatus, setRenderStatus] = useState<"pending" | "rendered" | "failed">("pending");
+  const [renderError, setRenderError] = useState<string | null>(null);
   const [themeVersion, setThemeVersion] = useState(0);
+  const [retryVersion, setRetryVersion] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
@@ -1163,6 +1232,12 @@ export function PlantUmlBlock({ code }: { code: string }) {
     panStartRef.current = null;
   }, []);
 
+  const handleRetryRender = useCallback(() => {
+    setRenderStatus("pending");
+    setRenderError(null);
+    setRetryVersion((prev) => prev + 1);
+  }, []);
+
   useEffect(() => {
     const observer = new MutationObserver(() => {
       setThemeVersion((v) => v + 1);
@@ -1181,6 +1256,7 @@ export function PlantUmlBlock({ code }: { code: string }) {
 
     const doRender = async () => {
       setRenderStatus("pending");
+      setRenderError(null);
       try {
         const nextCode = injectPlantUmlThemePreset(code, getMermaidTheme() === "dark");
         const svg = await renderPlantUml(nextCode);
@@ -1196,13 +1272,14 @@ export function PlantUmlBlock({ code }: { code: string }) {
         } else {
           URL.revokeObjectURL(nextUrl);
         }
-      } catch {
+      } catch (err) {
         if (!cancelled) {
           if (objectUrlRef.current) {
             URL.revokeObjectURL(objectUrlRef.current);
             objectUrlRef.current = null;
           }
           setSvgUrl(null);
+          setRenderError(normalizeDiagramErrorMessage(err, "PlantUML 渲染失败"));
           setRenderStatus("failed");
         }
       }
@@ -1217,7 +1294,7 @@ export function PlantUmlBlock({ code }: { code: string }) {
         objectUrlRef.current = null;
       }
     };
-  }, [code, themeVersion]);
+  }, [code, themeVersion, retryVersion]);
 
   if (svgUrl) {
     const canvasStyle = isFullscreen
@@ -1260,6 +1337,18 @@ export function PlantUmlBlock({ code }: { code: string }) {
 
   return (
     <div className="relative group" data-plantuml-render-status={renderStatus}>
+      {renderStatus === "failed" && (
+        <div className="mb-2 rounded-md border border-gh-border bg-gh-bg-subtle px-2 py-1 text-xs text-gh-text-secondary">
+          <p>图表渲染失败：{renderError ?? "未知错误"}。已回退为代码块显示。</p>
+          <button
+            className="mt-2 inline-flex items-center rounded-md border border-gh-border bg-gh-bg-secondary px-2 py-1 text-xs text-gh-text-secondary transition-colors duration-150 hover:border-gh-text-secondary hover:text-gh-text-primary cursor-pointer"
+            onClick={handleRetryRender}
+            title="Retry PlantUML render"
+          >
+            重试渲染
+          </button>
+        </div>
+      )}
       <pre>
         <code>{code}</code>
       </pre>
@@ -1638,6 +1727,47 @@ function RawView({ content }: { content: string }) {
   );
 }
 
+interface CollapsibleHeadingProps extends React.HTMLAttributes<HTMLHeadingElement> {
+  as: "h1" | "h2" | "h3" | "h4" | "h5" | "h6";
+  collapsed: boolean;
+  onToggleCollapse?: () => void;
+}
+
+function CollapsibleHeading({
+  as,
+  collapsed,
+  onToggleCollapse,
+  className,
+  children,
+  onClick,
+  id,
+  ...props
+}: CollapsibleHeadingProps) {
+  const Tag = as;
+  const canToggle = typeof id === "string" && id.length > 0;
+
+  return (
+    <Tag
+      id={id}
+      className={`${className ?? ""} group cursor-pointer`}
+      onClick={(e) => {
+        onClick?.(e);
+        if (!canToggle) return;
+        const target = e.target as HTMLElement;
+        if (target.closest("a")) return;
+        onToggleCollapse?.();
+      }}
+      title={canToggle ? (collapsed ? "点击展开该标题内容" : "点击折叠该标题内容") : undefined}
+      {...props}
+    >
+      <span className="mr-2 inline-flex w-4 select-none items-center justify-center text-xs text-gh-text-secondary">
+        {canToggle ? (collapsed ? "▶" : "▼") : "•"}
+      </span>
+      <span className="align-middle">{children}</span>
+    </Tag>
+  );
+}
+
 export function MarkdownViewer({
   fileId,
   fileName,
@@ -1647,6 +1777,8 @@ export function MarkdownViewer({
   onContentRendered,
   isTocOpen,
   onTocToggle,
+  isMindmapOpen,
+  onMindmapToggle,
   onRemoveFile,
   isWide,
   searchJumpRequest,
@@ -1655,6 +1787,8 @@ export function MarkdownViewer({
   const [content, setContent] = useState("");
   const [loading, setLoading] = useState(true);
   const [isRawView, setIsRawView] = useState(false);
+  const [collapsedHeadingIds, setCollapsedHeadingIds] = useState<Set<string>>(() => new Set());
+  const [linkOpenError, setLinkOpenError] = useState<string | null>(null);
   const articleRef = useRef<HTMLElement>(null);
   const [prevFetchKey, setPrevFetchKey] = useState({ fileId, revision });
 
@@ -1665,6 +1799,7 @@ export function MarkdownViewer({
 
   useEffect(() => {
     let cancelled = false;
+    setLinkOpenError(null);
     fetchFileContent(fileId)
       .then((data) => {
         if (!cancelled) {
@@ -1683,9 +1818,26 @@ export function MarkdownViewer({
     };
   }, [fileId, revision]);
 
+  useEffect(() => {
+    setCollapsedHeadingIds(new Set());
+  }, [fileId, revision]);
+
+  const toggleHeadingCollapse = useCallback((headingId: string) => {
+    setCollapsedHeadingIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(headingId)) {
+        next.delete(headingId);
+      } else {
+        next.add(headingId);
+      }
+      return next;
+    });
+  }, []);
+
   const handleLinkClick = useCallback(
     async (e: React.MouseEvent<HTMLAnchorElement>, href: string, anchor: string | null) => {
       e.preventDefault();
+      setLinkOpenError(null);
       try {
         const entry = await openRelativeFile(fileId, href);
         onFileOpened(entry.id);
@@ -1699,7 +1851,7 @@ export function MarkdownViewer({
           });
         }
       } catch {
-        // fallback: do nothing
+        setLinkOpenError(`无法打开链接：${href}`);
       }
     },
     [fileId, onFileOpened],
@@ -1708,6 +1860,78 @@ export function MarkdownViewer({
   const components: Components = useMemo(
     () => ({
       pre: ({ children }) => <>{children}</>,
+      h1: ({ node: _node, children, id, className, ...props }) => (
+        <CollapsibleHeading
+          as="h1"
+          id={id}
+          className={className}
+          collapsed={typeof id === "string" && collapsedHeadingIds.has(id)}
+          onToggleCollapse={typeof id === "string" ? () => toggleHeadingCollapse(id) : undefined}
+          {...props}
+        >
+          {children}
+        </CollapsibleHeading>
+      ),
+      h2: ({ node: _node, children, id, className, ...props }) => (
+        <CollapsibleHeading
+          as="h2"
+          id={id}
+          className={className}
+          collapsed={typeof id === "string" && collapsedHeadingIds.has(id)}
+          onToggleCollapse={typeof id === "string" ? () => toggleHeadingCollapse(id) : undefined}
+          {...props}
+        >
+          {children}
+        </CollapsibleHeading>
+      ),
+      h3: ({ node: _node, children, id, className, ...props }) => (
+        <CollapsibleHeading
+          as="h3"
+          id={id}
+          className={className}
+          collapsed={typeof id === "string" && collapsedHeadingIds.has(id)}
+          onToggleCollapse={typeof id === "string" ? () => toggleHeadingCollapse(id) : undefined}
+          {...props}
+        >
+          {children}
+        </CollapsibleHeading>
+      ),
+      h4: ({ node: _node, children, id, className, ...props }) => (
+        <CollapsibleHeading
+          as="h4"
+          id={id}
+          className={className}
+          collapsed={typeof id === "string" && collapsedHeadingIds.has(id)}
+          onToggleCollapse={typeof id === "string" ? () => toggleHeadingCollapse(id) : undefined}
+          {...props}
+        >
+          {children}
+        </CollapsibleHeading>
+      ),
+      h5: ({ node: _node, children, id, className, ...props }) => (
+        <CollapsibleHeading
+          as="h5"
+          id={id}
+          className={className}
+          collapsed={typeof id === "string" && collapsedHeadingIds.has(id)}
+          onToggleCollapse={typeof id === "string" ? () => toggleHeadingCollapse(id) : undefined}
+          {...props}
+        >
+          {children}
+        </CollapsibleHeading>
+      ),
+      h6: ({ node: _node, children, id, className, ...props }) => (
+        <CollapsibleHeading
+          as="h6"
+          id={id}
+          className={className}
+          collapsed={typeof id === "string" && collapsedHeadingIds.has(id)}
+          onToggleCollapse={typeof id === "string" ? () => toggleHeadingCollapse(id) : undefined}
+          {...props}
+        >
+          {children}
+        </CollapsibleHeading>
+      ),
       code: ({ className, children, ...props }) => {
         const language = extractLanguage(className);
         const code = String(children).replace(/\n$/, "");
@@ -1772,7 +1996,7 @@ export function MarkdownViewer({
         }
       },
     }),
-    [fileId, handleLinkClick],
+    [collapsedHeadingIds, fileId, handleLinkClick, toggleHeadingCollapse],
   );
 
   const parsed = useMemo(
@@ -1800,6 +2024,46 @@ export function MarkdownViewer({
       </>
     );
   }, [content, isRawView, parsed, components, fileName]);
+
+  useEffect(() => {
+    const article = articleRef.current;
+    if (!article || loading || isRawView) return;
+
+    const resetHidden = () => {
+      const hiddenEls = article.querySelectorAll<HTMLElement>("[data-heading-collapsed-hidden='1']");
+      hiddenEls.forEach((el) => {
+        el.style.removeProperty("display");
+        el.removeAttribute("data-heading-collapsed-hidden");
+      });
+    };
+
+    resetHidden();
+    if (collapsedHeadingIds.size === 0) return;
+
+    const headingEls = Array.from(article.querySelectorAll<HTMLElement>("h1, h2, h3, h4, h5, h6"));
+
+    for (const headingEl of headingEls) {
+      if (!headingEl.id || !collapsedHeadingIds.has(headingEl.id)) continue;
+
+      const level = parseInt(headingEl.tagName.slice(1), 10);
+      let cursor = headingEl.nextElementSibling as HTMLElement | null;
+
+      while (cursor) {
+        if (/^H[1-6]$/.test(cursor.tagName)) {
+          const nextLevel = parseInt(cursor.tagName.slice(1), 10);
+          if (nextLevel <= level) break;
+        }
+
+        cursor.style.display = "none";
+        cursor.setAttribute("data-heading-collapsed-hidden", "1");
+        cursor = cursor.nextElementSibling as HTMLElement | null;
+      }
+    }
+
+    return () => {
+      resetHidden();
+    };
+  }, [collapsedHeadingIds, isRawView, loading, renderedContent]);
 
   const prevHeadingsKey = useRef("");
   useEffect(() => {
@@ -1894,11 +2158,20 @@ export function MarkdownViewer({
         data-file-id={fileId}
         className={`markdown-body min-w-0 flex-1${isWide ? " markdown-body--wide" : ""}`}
       >
+        {linkOpenError && (
+          <div
+            role="status"
+            className="mb-3 rounded-md border border-gh-border bg-gh-bg-subtle px-3 py-2 text-sm text-gh-text-secondary"
+          >
+            {linkOpenError}
+          </div>
+        )}
         {renderedContent}
         <BacklinksPanel fileId={fileId} />
       </article>
       <div className="shrink-0 sticky top-0 self-start flex flex-col gap-2 -mr-4 -mt-4">
         <TocToggle isTocOpen={isTocOpen} onToggle={onTocToggle} />
+        <MindmapToggle isMindmapOpen={isMindmapOpen} onToggle={onMindmapToggle} />
         <RawToggle isRaw={isRawView} onToggle={() => setIsRawView((v) => !v)} />
         <CopyButton content={content} />
         <PdfExportButton articleRef={articleRef} fileName={fileName} />

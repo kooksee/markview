@@ -62,11 +62,42 @@ describe("PlantUmlBlock", () => {
         render(<PlantUmlBlock code="@startuml\nA -> B\n@enduml" />);
 
         await waitFor(() => {
+            expect(screen.getByText("图表渲染失败：渲染服务异常，请稍后重试（PlantUML render failed with status 500）。已回退为代码块显示。")).toBeInTheDocument();
             expect(screen.getByText(/@startuml/)).toBeInTheDocument();
             expect(screen.getByText(/@enduml/)).toBeInTheDocument();
             expect(screen.queryByRole("img", { name: "PlantUML diagram" })).not.toBeInTheDocument();
             expect(screen.getByTitle("Copy code")).toBeInTheDocument();
         });
+    });
+
+    it("retries rendering when clicking retry button after failure", async () => {
+        const fetchMock = vi
+            .fn()
+            .mockResolvedValueOnce({
+                ok: false,
+                status: 503,
+                text: vi.fn().mockResolvedValue("service unavailable"),
+            })
+            .mockResolvedValueOnce({
+                ok: true,
+                status: 200,
+                text: vi.fn().mockResolvedValue('<svg viewBox="0 0 100 60"><text>ok</text></svg>'),
+            });
+        vi.stubGlobal("fetch", fetchMock);
+
+        render(<PlantUmlBlock code="@startuml\nA -> B\n@enduml" />);
+
+        await waitFor(() => {
+            expect(screen.getByText("图表渲染失败：渲染服务异常，请稍后重试（PlantUML render failed with status 503）。已回退为代码块显示。")).toBeInTheDocument();
+            expect(screen.getByRole("button", { name: "重试渲染" })).toBeInTheDocument();
+        });
+
+        fireEvent.click(screen.getByRole("button", { name: "重试渲染" }));
+
+        await waitFor(() => {
+            expect(screen.getByRole("img", { name: "PlantUML diagram" })).toBeInTheDocument();
+        });
+        expect(fetchMock).toHaveBeenCalledTimes(2);
     });
 
     it("calls requestFullscreen on fullscreen button click", async () => {

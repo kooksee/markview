@@ -65,9 +65,8 @@ export function BacklinksPanel({ fileId }: BacklinksPanelProps) {
         (entry: BacklinkEntry) => {
             const url = buildFileUrl(entry.group, entry.fileId);
             if (entry.group === activeGroup) {
-                // Same group: update URL in-place
-                window.history.pushState(null, "", `${url}`);
-                window.dispatchEvent(new PopStateEvent("popstate"));
+                // Same group: navigate in current tab to ensure file switch always works
+                window.location.assign(`${window.location.origin}${url}`);
             } else {
                 window.open(`${window.location.origin}${url}`, "_blank", "noopener,noreferrer");
             }

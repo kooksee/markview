@@ -1,0 +1,14 @@
+markview NOTICE
+===============
+
+This project includes work derived from:
+
+- Project: k1LoW/mo
+- Repository: https://github.com/k1LoW/mo
+- License: MIT License
+- Upstream copyright:
+  Copyright © 2026 Ken'ichiro Oyama <k1lowxb@gmail.com>
+
+markview is maintained as a derivative project with additional modifications.
+Please refer to LICENSE and CREDITS/CREDITS_FRONTEND for detailed license texts
+of this repository and third-party dependencies.
