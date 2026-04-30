@@ -1,84 +1,97 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import mermaid from "mermaid";
 import type { NotebookHeadingLike } from "../utils/notebookOutline";
-
-interface MindmapNode {
-    id: string;
-    text: string;
-    level: number;
-    children: MindmapNode[];
-}
+import { buildDocumentMindmapMermaid } from "../utils/documentMindmap";
+import { ZoomPanView } from "./ZoomPanView";
 
 interface DocumentMindmapPanelProps {
     headings: NotebookHeadingLike[];
+    fileName?: string;
     onNavigateHeading?: (headingId: string) => void;
 }
 
-function buildMindmapTree(headings: NotebookHeadingLike[]): MindmapNode[] {
-    const roots: MindmapNode[] = [];
-    const stack: MindmapNode[] = [];
-
-    for (const heading of headings) {
-        const level = Math.max(1, Math.min(6, heading.level));
-        const node: MindmapNode = {
-            id: heading.id,
-            text: heading.text,
-            level,
-            children: [],
-        };
-
-        while (stack.length > 0 && stack[stack.length - 1].level >= level) {
-            stack.pop();
-        }
-
-        if (stack.length === 0) {
-            roots.push(node);
-        } else {
-            stack[stack.length - 1].children.push(node);
-        }
-
-        stack.push(node);
-    }
-
-    return roots;
+function getMermaidTheme(): "dark" | "default" {
+    return document.documentElement.getAttribute("data-theme") === "dark" ? "dark" : "default";
 }
 
-function MindmapTree({
-    nodes,
+export function DocumentMindmapPanel({
+    headings,
+    fileName,
     onNavigateHeading,
-}: {
-    nodes: MindmapNode[];
-    onNavigateHeading?: (headingId: string) => void;
-}) {
-    if (nodes.length === 0) return null;
-
-    return (
-        <ul className="space-y-1 pl-3">
-            {nodes.map((node) => (
-                <li key={node.id}>
-                    <button
-                        type="button"
-                        className="w-full rounded-md border border-gh-border bg-gh-bg px-2 py-1 text-left text-sm text-gh-text-primary hover:bg-gh-bg-hover"
-                        onClick={() => onNavigateHeading?.(node.id)}
-                        title={`定位到 ${node.text}`}
-                    >
-                        <span className="mr-2 text-[10px] text-gh-text-secondary">H{node.level}</span>
-                        <span>{node.text}</span>
-                    </button>
-                    {node.children.length > 0 && (
-                        <div className="mt-1 border-l border-gh-border/70">
-                            <MindmapTree nodes={node.children} onNavigateHeading={onNavigateHeading} />
-                        </div>
-                    )}
-                </li>
-            ))}
-        </ul>
+}: DocumentMindmapPanelProps) {
+    const [svg, setSvg] = useState("");
+    const [isRendering, setIsRendering] = useState(false);
+    const [renderError, setRenderError] = useState<string | null>(null);
+    const [themeVersion, setThemeVersion] = useState(0);
+    const svgContainerRef = useRef<HTMLDivElement>(null);
+    const mermaidCode = useMemo(
+        () => buildDocumentMindmapMermaid(headings, fileName || "当前文档"),
+        [headings, fileName],
     );
-}
 
-export function DocumentMindmapPanel({ headings, onNavigateHeading }: DocumentMindmapPanelProps) {
-    const trees = useMemo(() => buildMindmapTree(headings), [headings]);
+    useEffect(() => {
+        const observer = new MutationObserver(() => setThemeVersion((value) => value + 1));
+        observer.observe(document.documentElement, {
+            attributes: true,
+            attributeFilter: ["data-theme"],
+        });
+        return () => observer.disconnect();
+    }, []);
 
-    if (trees.length === 0) {
+    useEffect(() => {
+        if (headings.length === 0) {
+            setSvg("");
+            setRenderError(null);
+            setIsRendering(false);
+            return;
+        }
+
+        let cancelled = false;
+        setIsRendering(true);
+        setRenderError(null);
+
+        const hiddenContainer = document.createElement("div");
+        hiddenContainer.style.position = "absolute";
+        hiddenContainer.style.left = "-9999px";
+        hiddenContainer.style.top = "-9999px";
+        hiddenContainer.style.width = "1200px";
+        document.body.appendChild(hiddenContainer);
+
+        mermaid.initialize({ startOnLoad: false, theme: getMermaidTheme() });
+        const id = `document-mindmap-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+
+        mermaid
+            .render(id, mermaidCode, hiddenContainer)
+            .then(({ svg: rendered }) => {
+                if (!cancelled) {
+                    setSvg(rendered);
+                }
+            })
+            .catch((err) => {
+                if (!cancelled) {
+                    setSvg("");
+                    setRenderError(err instanceof Error ? err.message : "思维导图渲染失败");
+                }
+            })
+            .finally(() => {
+                hiddenContainer.remove();
+                if (!cancelled) {
+                    setIsRendering(false);
+                }
+            });
+
+        return () => {
+            cancelled = true;
+            hiddenContainer.remove();
+        };
+    }, [headings, mermaidCode, themeVersion]);
+
+    useEffect(() => {
+        if (!svgContainerRef.current) return;
+        svgContainerRef.current.innerHTML = svg;
+    }, [svg]);
+
+    if (headings.length === 0) {
         return (
             <div className="flex h-full items-center justify-center text-sm text-gh-text-secondary">
                 当前文档暂无可解析标题
@@ -89,10 +102,44 @@ export function DocumentMindmapPanel({ headings, onNavigateHeading }: DocumentMi
     return (
         <div className="flex h-full flex-col">
             <div className="mb-2 text-xs text-gh-text-secondary">
-                当前文档思维导图（基于标题解析）
+                Markdown 标题已自动转换为思维导图（滚轮缩放、拖拽平移）
             </div>
-            <div className="min-h-0 flex-1 overflow-y-auto pr-1">
-                <MindmapTree nodes={trees} onNavigateHeading={onNavigateHeading} />
+            {renderError && (
+                <div className="mb-2 rounded-md border border-gh-border bg-gh-bg px-2 py-1 text-xs text-gh-text-secondary">
+                    思维导图渲染失败：{renderError}
+                </div>
+            )}
+            <div className="min-h-0 flex-1 overflow-hidden rounded-md border border-gh-border bg-gh-bg">
+                {svg.length > 0 ? (
+                    <ZoomPanView className="h-full w-full" defaultZoom={1}>
+                        <div
+                            ref={svgContainerRef}
+                            className="inline-block p-4 [&_svg]:h-auto [&_svg]:max-w-none"
+                        />
+                    </ZoomPanView>
+                ) : (
+                    <div className="flex h-full items-center justify-center text-sm text-gh-text-secondary">
+                        {isRendering ? "正在生成思维导图..." : "暂无可渲染的思维导图"}
+                    </div>
+                )}
+            </div>
+            <div className="mt-2 shrink-0">
+                <div className="mb-1 text-xs text-gh-text-secondary">标题导航</div>
+                <div className="max-h-28 overflow-y-auto pr-1">
+                    <div className="flex flex-wrap gap-1">
+                        {headings.map((heading) => (
+                            <button
+                                key={heading.id}
+                                type="button"
+                                className="rounded-md border border-gh-border bg-gh-bg px-2 py-1 text-xs text-gh-text-secondary hover:bg-gh-bg-hover"
+                                onClick={() => onNavigateHeading?.(heading.id)}
+                                title={`定位到 ${heading.text}`}
+                            >
+                                H{heading.level} {heading.text}
+                            </button>
+                        ))}
+                    </div>
+                </div>
             </div>
         </div>
     );

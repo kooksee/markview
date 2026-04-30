@@ -685,6 +685,7 @@ export function App() {
                     <div className="min-h-0 flex-1">
                       <DocumentMindmapPanel
                         headings={headings}
+                        fileName={activeFileName}
                         onNavigateHeading={handleHeadingClick}
                       />
                     </div>
