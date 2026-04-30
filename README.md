@@ -22,15 +22,15 @@
 - <img src="images/icons/group.svg" width="16" height="16" alt="分组"> 文件分组管理
 - <img src="images/icons/toc.svg" width="16" height="16" alt="目录"> 文档目录面板
 - <img src="images/icons/view-flat.svg" width="16" height="16" alt="平铺"> 平铺 / <img src="images/icons/view-tree.svg" width="16" height="16" alt="树形"> 树形侧边栏（支持拖拽排序与文件搜索）
-- YAML Frontmatter 展示（可折叠元数据区域）
+- YAML 前置元数据展示（可折叠元数据区域）
 - MDX 支持（渲染 Markdown，去除 `import`/`export`，转义 JSX 标签）
 - <img src="images/icons/width-expand.svg" width="16" height="16" alt="宽布局"> 宽版 / <img src="images/icons/width-compress.svg" width="16" height="16" alt="窄布局"> 窄版阅读宽度切换
 - <img src="images/icons/raw.svg" width="16" height="16" alt="原文"> 原始 Markdown 视图
 - <img src="images/icons/copy.svg" width="16" height="16" alt="复制"> 内容复制（Markdown / 文本 / HTML）
 - <img src="images/icons/restart.svg" width="16" height="16" alt="重启"> 服务重启并保留会话
 - 自动会话备份与恢复
-- 支持从操作系统文件管理器拖拽添加文件（内容以内存形式加载，拖拽文件不支持 live-reload）
-- 对通过 CLI 打开的文件支持保存后实时刷新
+- 支持从操作系统文件管理器拖拽添加文件（内容以内存形式加载，拖拽文件不支持实时刷新）
+- 对通过命令行打开的文件支持保存后实时刷新
 
 ## 安装
 
@@ -254,9 +254,21 @@ $ make build
 ### 中文速览
 
 - 架构形态：Go 后端 + React 前端，最终以单二进制分发
-- 运行机制：CLI 单实例复用 + HTTP API + SSE 实时刷新
+- 运行机制：命令行单实例复用 + HTTP 接口 + 服务端事件流实时刷新
 - 状态策略：服务端状态中心（groups/files/patterns）+ XDG 会话备份恢复
 - 工程化：Makefile、CI（lint/test/coverage）、GoReleaser 多平台发布
+
+## 术语说明
+
+| 中文称呼     | 代码中的常见写法 | 说明                              |
+| ------------ | ---------------- | --------------------------------- |
+| 命令行入口   | `CLI`            | 指命令行程序入口与参数处理逻辑    |
+| 接口         | `API`            | 指前后端通过 HTTP 调用的内部接口  |
+| 服务端事件流 | `SSE`            | 用于将服务端变更实时推送到前端    |
+| 监听模式     | `watch pattern`  | 通过 `--watch` 注册的通配路径规则 |
+| 前置元数据   | `Frontmatter`    | Markdown 文件顶部的 YAML 元数据块 |
+| 目录面板     | `ToC`            | 文档标题目录导航面板              |
+| 原文视图     | `Raw`            | 直接查看 Markdown 原始文本        |
 
 ## 参考项目
 

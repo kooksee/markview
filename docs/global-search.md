@@ -15,7 +15,7 @@
 
 ## 搜索行为
 
-- 搜索范围：所有分组（group）下的所有文件内容
+- 搜索范围：所有分组下的所有文件内容
 - 匹配方式：大小写不敏感的子串匹配
 - 结果上限：默认最多 200 条命中
 - 结果信息：文件名、所属分组、行号、命中片段（关键词高亮）
@@ -24,23 +24,23 @@
 
 ```mermaid
 sequenceDiagram
-    participant User
-    participant App
-    participant GlobalSearchModal
-    participant fullTextSearch
-    participant API
+    participant 用户
+    participant 应用
+    participant 搜索弹窗
+    participant 检索模块
+    participant 接口层
 
-    User->>App: ⌘+Shift+F
-    App->>GlobalSearchModal: isOpen=true
-    GlobalSearchModal->>API: fetchFileContent (并发拉取所有文件)
-    API-->>GlobalSearchModal: 文件内容 (带缓存)
-    User->>GlobalSearchModal: 输入关键词
-    GlobalSearchModal->>fullTextSearch: searchInFiles(files, query)
-    fullTextSearch-->>GlobalSearchModal: FullTextSearchHit[]
-    GlobalSearchModal-->>User: 展示匹配结果列表
-    User->>GlobalSearchModal: 点击某条结果
-    GlobalSearchModal->>App: onSelect(groupName, fileId)
-    App->>App: 切换分组 + 激活文件
+    用户->>应用: ⌘+Shift+F
+    应用->>搜索弹窗: isOpen=true
+    搜索弹窗->>接口层: fetchFileContent（并发拉取所有文件）
+    接口层-->>搜索弹窗: 文件内容（带缓存）
+    用户->>搜索弹窗: 输入关键词
+    搜索弹窗->>检索模块: searchInFiles(files, query)
+    检索模块-->>搜索弹窗: FullTextSearchHit[]
+    搜索弹窗-->>用户: 展示匹配结果列表
+    用户->>搜索弹窗: 点击某条结果
+    搜索弹窗->>应用: onSelect(groupName, fileId)
+    应用->>应用: 切换分组 + 激活文件
 ```
 
 ## 涉及文件
@@ -57,13 +57,13 @@ sequenceDiagram
 ### 交互体验
 
 1. **键盘导航** — 上下方向键选择结果、Enter 打开选中项，减少鼠标依赖
-2. **防抖输入** — 文件较多时加 ~150ms debounce，避免每次按键都触发搜索
+2. **防抖输入** — 文件较多时增加约 150ms 输入防抖，避免每次按键都触发搜索
 3. **每行多处匹配** — 当前每行只取第一个命中，长行中后续匹配会被遗漏
 
 ### 性能
 
 4. **增量缓存** — 当前每次打开弹窗都重新拉取所有文件内容；可改为只拉新增/变更文件（结合 SSE `file-changed` 事件清除对应缓存）
-5. **Web Worker 搜索** — 文件数量很大时搜索会阻塞主线程，可移至 Worker 执行
+5. **工作线程搜索** — 文件数量很大时搜索会阻塞主线程，可移至 Worker 执行
 
 ### 功能增强
 

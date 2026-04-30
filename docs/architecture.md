@@ -6,11 +6,11 @@
 
 ```mermaid
 flowchart LR
-    CLI[命令行入口 / cmd/root.go] -->|启动/复用| HTTP[Go HTTP 服务]
+    CLI[命令行入口 / cmd/root.go] -->|启动/复用| HTTP[Go 网络服务]
     HTTP --> STATE[状态中心\n(groups/files/patterns)]
     HTTP --> WATCH[fsnotify]
-    WATCH --> SSE[SSE /_/events]
-    SSE --> SPA[React SPA]
+    WATCH --> SSE[服务端事件流 /_/events]
+    SSE --> SPA[React 前端界面]
     SPA --> API[/_/api/*]
     API --> STATE
     STATE --> BACKUP[会话备份 JSON\nXDG_STATE_HOME]
@@ -22,23 +22,23 @@ flowchart LR
 
 - **单实例复用**：同端口优先复用已有进程。
 - **服务端状态中心**：分组、文件、watch 模式统一由后端维护。
-- **前后端松耦合**：通过 HTTP 接口 + SSE 通信。
+- **前后端松耦合**：通过 HTTP 接口 + 服务端事件流通信。
 - **内嵌前端静态资源**：最终交付为单可执行文件。
 
 ## 2. 目录与模块职责
 
 | 模块            | 路径                                         | 职责                                       |
 | --------------- | -------------------------------------------- | ------------------------------------------ |
-| CLI 入口        | `cmd/root.go`                                | 参数解析、单实例探测、前后台启动、状态命令 |
-| 服务状态与路由  | `internal/server/server.go`                  | HTTP API、SSE、文件监听、状态管理          |
+| 命令行入口      | `cmd/root.go`                                | 参数解析、单实例探测、前后台启动、状态命令 |
+| 服务状态与路由  | `internal/server/server.go`                  | HTTP 接口、事件流、文件监听、状态管理      |
 | 链接/大纲图构建 | `internal/server/graph.go`                   | 从 Markdown 内容提取关系并输出图数据       |
 | 分组名规范      | `internal/server/group.go`                   | 分组名归一化与安全校验                     |
 | 备份存储        | `internal/backup/backup.go`                  | 会话快照读写（原子写）                     |
 | 静态资源嵌入    | `internal/static/static.go`                  | 触发前端构建并 `go:embed` 嵌入             |
 | 前端主流程      | `frontend/src/App.tsx`                       | 路由状态、分组/文件选择、SSE 刷新          |
 | 前端渲染核心    | `frontend/src/components/MarkdownViewer.tsx` | Markdown 渲染与图表增强                    |
-| API 封装        | `frontend/src/hooks/useApi.ts`               | 前端到后端接口调用                         |
-| SSE 订阅        | `frontend/src/hooks/useSSE.ts`               | 实时事件与断线重连                         |
+| 接口封装        | `frontend/src/hooks/useApi.ts`               | 前端到后端接口调用                         |
+| 事件流订阅      | `frontend/src/hooks/useSSE.ts`               | 实时事件与断线重连                         |
 
 ## 3. 关键运行时序
 
@@ -52,10 +52,10 @@ sequenceDiagram
 
     U->>C: markview README.md
     C->>S: GET /_/api/status
-    alt Server exists
+    alt 服务已存在
         C->>S: POST /_/api/files
         C-->>U: 输出 URL 并退出
-    else Server not found
+    else 服务未找到
         C->>C: 启动新服务进程
         C-->>U: 输出 URL
     end
@@ -68,11 +68,11 @@ sequenceDiagram
     participant FS as 文件系统
     participant W as fsnotify
     participant ST as 状态中心
-    participant FE as 前端（SSE）
+    participant FE as 前端（服务端事件流）
 
     FS->>W: 文件写入/重命名
     W->>ST: 变更事件
-    ST->>FE: SSE(file-changed)
+    ST->>FE: 事件流推送(file-changed)
     FE->>FE: 拉取 /_/api/files/{id}/content
     FE-->>FE: 重新渲染 Markdown
 ```
@@ -82,7 +82,7 @@ sequenceDiagram
 ## 4.1 服务端状态
 
 - `groups`: 当前分组及文件列表
-- `patterns`: 当前 watch 的 glob 模式集合
+- `patterns`: 当前监听通配模式集合
 - `watchedDirs`: 被监听目录的引用计数
 - `subscribers`: SSE 订阅者集合
 
@@ -100,7 +100,7 @@ sequenceDiagram
 
 ## 5. API 边界
 
-内部 API 统一使用 `/_/api/*` 前缀，避免与用户分组路由冲突：
+内部接口统一使用 `/_/api/*` 前缀，避免与用户分组路由冲突：
 
 - 文件管理：`POST /_/api/files`、`DELETE /_/api/files/{id}`
 - 内容读取：`GET /_/api/files/{id}/content`
@@ -117,11 +117,11 @@ sequenceDiagram
 - `go generate ./internal/static/`：构建前端产物到 `internal/static/dist`
 - `go build`：打包 Go 服务 + 内嵌静态资源
 
-## 6.2 CI/CD
+## 6.2 持续集成与发布
 
-- CI：前端 lint/format、Go lint、测试覆盖率
-- Release：`tagpr` 管理版本，`goreleaser` 产出多平台二进制
-- License：Trivy 做许可证扫描
+- 持续集成：前端 lint/format、Go lint、测试覆盖率
+- 发布：`tagpr` 管理版本，`goreleaser` 产出多平台二进制
+- 许可证检查：Trivy 扫描许可证风险
 
 ## 7. 安全与边界
 
