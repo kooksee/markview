@@ -286,11 +286,13 @@ function getNodeSide(
 
 interface OutlineTreeViewProps {
   onClose: () => void;
+  onSelectFile?: (fileId: string, group: string) => void;
+  embedded?: boolean;
 }
 
 const LAYOUT_DIRECTION_KEY = "markview-outline-layout-direction";
 
-export function OutlineTreeView({ onClose }: OutlineTreeViewProps) {
+export function OutlineTreeView({ onClose, onSelectFile, embedded = false }: OutlineTreeViewProps) {
   const [outline, setOutline] = useState<Outline | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -352,14 +354,22 @@ export function OutlineTreeView({ onClose }: OutlineTreeViewProps) {
   const handleNodeClick = useCallback(
     (_nodeId: string, d: TreeDataNode["data"]) => {
       if (d.isLink && d.targetFileId && d.targetGroup) {
+        if (onSelectFile) {
+          onSelectFile(d.targetFileId, d.targetGroup);
+          return;
+        }
         const path = buildFileUrl(d.targetGroup, d.targetFileId);
         window.open(`${window.location.origin}${path}`, "_blank", "noopener,noreferrer");
       } else if ((d.isFile || d.isH1 || (d.isH2 && !d.hasLinks)) && d.fileId && d.group) {
+        if (onSelectFile) {
+          onSelectFile(d.fileId, d.group);
+          return;
+        }
         const path = buildFileUrl(d.group, d.fileId);
         window.open(`${window.location.origin}${path}`, "_blank", "noopener,noreferrer");
       }
     },
-    [],
+    [onSelectFile],
   );
 
   useEffect(() => {
@@ -527,13 +537,15 @@ export function OutlineTreeView({ onClose }: OutlineTreeViewProps) {
     return (
       <div className="flex flex-col h-full">
         <div className="flex items-center gap-2 shrink-0 pb-2">
-          <button
-            type="button"
-            className="rounded-md border border-gh-border bg-transparent px-2 py-1.5 text-sm text-gh-text-secondary hover:bg-gh-bg-hover"
-            onClick={onClose}
-          >
-            返回文档
-          </button>
+          {!embedded && (
+            <button
+              type="button"
+              className="rounded-md border border-gh-border bg-transparent px-2 py-1.5 text-sm text-gh-text-secondary hover:bg-gh-bg-hover"
+              onClick={onClose}
+            >
+              返回文档
+            </button>
+          )}
         </div>
         <div className="flex flex-1 items-center justify-center text-sm text-gh-text-secondary">
           加载中…
@@ -546,13 +558,15 @@ export function OutlineTreeView({ onClose }: OutlineTreeViewProps) {
     return (
       <div className="flex flex-col h-full">
         <div className="flex items-center gap-2 shrink-0 pb-2">
-          <button
-            type="button"
-            className="rounded-md border border-gh-border bg-transparent px-2 py-1.5 text-sm text-gh-text-secondary hover:bg-gh-bg-hover"
-            onClick={onClose}
-          >
-            返回文档
-          </button>
+          {!embedded && (
+            <button
+              type="button"
+              className="rounded-md border border-gh-border bg-transparent px-2 py-1.5 text-sm text-gh-text-secondary hover:bg-gh-bg-hover"
+              onClick={onClose}
+            >
+              返回文档
+            </button>
+          )}
         </div>
         <div className="flex flex-1 items-center justify-center text-sm text-red-500">{error}</div>
       </div>
@@ -563,13 +577,15 @@ export function OutlineTreeView({ onClose }: OutlineTreeViewProps) {
     return (
       <div className="flex flex-col h-full">
         <div className="flex items-center gap-2 shrink-0 pb-2">
-          <button
-            type="button"
-            className="rounded-md border border-gh-border bg-transparent px-2 py-1.5 text-sm text-gh-text-secondary hover:bg-gh-bg-hover"
-            onClick={onClose}
-          >
-            返回文档
-          </button>
+          {!embedded && (
+            <button
+              type="button"
+              className="rounded-md border border-gh-border bg-transparent px-2 py-1.5 text-sm text-gh-text-secondary hover:bg-gh-bg-hover"
+              onClick={onClose}
+            >
+              返回文档
+            </button>
+          )}
         </div>
         <div className="flex flex-1 items-center justify-center text-sm text-gh-text-secondary">
           暂无文档或标题
@@ -581,13 +597,15 @@ export function OutlineTreeView({ onClose }: OutlineTreeViewProps) {
   return (
     <div className="flex flex-col h-full">
       <div className="flex shrink-0 flex-wrap items-center gap-2 pb-2">
-        <button
-          type="button"
-          className="rounded-md border border-gh-border bg-transparent px-2 py-1.5 text-sm text-gh-text-secondary hover:bg-gh-bg-hover"
-          onClick={onClose}
-        >
-          返回文档
-        </button>
+        {!embedded && (
+          <button
+            type="button"
+            className="rounded-md border border-gh-border bg-transparent px-2 py-1.5 text-sm text-gh-text-secondary hover:bg-gh-bg-hover"
+            onClick={onClose}
+          >
+            返回文档
+          </button>
+        )}
         <button
           type="button"
           className="rounded-md border border-gh-border bg-transparent px-2 py-1.5 text-sm text-gh-text-secondary hover:bg-gh-bg-hover"
@@ -597,7 +615,7 @@ export function OutlineTreeView({ onClose }: OutlineTreeViewProps) {
           {layoutDirection === "H" ? "横向" : "纵向"}
         </button>
         <span className="text-sm text-gh-text-secondary">
-          思维导图：以文件为根；孤节点独立成图；链接可多级展开；按文档着色；可折叠节点点击切换，Ctrl/Cmd+点击打开
+          思维导图：以文件为根；孤节点独立成图；链接可多级展开；按文档着色；可折叠节点点击切换{embedded ? "；点击节点在右侧联动打开" : "，Ctrl/Cmd+点击打开"}
         </span>
       </div>
       <div ref={containerRef} className="min-h-0 flex-1" style={{ minHeight: 300 }} />
