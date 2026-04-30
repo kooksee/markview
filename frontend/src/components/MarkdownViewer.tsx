@@ -1724,6 +1724,47 @@ function RawView({ content }: { content: string }) {
   );
 }
 
+interface CollapsibleHeadingProps extends React.HTMLAttributes<HTMLHeadingElement> {
+  as: "h1" | "h2" | "h3" | "h4" | "h5" | "h6";
+  collapsed: boolean;
+  onToggleCollapse?: () => void;
+}
+
+function CollapsibleHeading({
+  as,
+  collapsed,
+  onToggleCollapse,
+  className,
+  children,
+  onClick,
+  id,
+  ...props
+}: CollapsibleHeadingProps) {
+  const Tag = as;
+  const canToggle = typeof id === "string" && id.length > 0;
+
+  return (
+    <Tag
+      id={id}
+      className={`${className ?? ""} group cursor-pointer`}
+      onClick={(e) => {
+        onClick?.(e);
+        if (!canToggle) return;
+        const target = e.target as HTMLElement;
+        if (target.closest("a")) return;
+        onToggleCollapse?.();
+      }}
+      title={canToggle ? (collapsed ? "点击展开该标题内容" : "点击折叠该标题内容") : undefined}
+      {...props}
+    >
+      <span className="mr-2 inline-flex w-4 select-none items-center justify-center text-xs text-gh-text-secondary">
+        {canToggle ? (collapsed ? "▶" : "▼") : "•"}
+      </span>
+      <span className="align-middle">{children}</span>
+    </Tag>
+  );
+}
+
 export function MarkdownViewer({
   fileId,
   fileName,
@@ -1741,6 +1782,7 @@ export function MarkdownViewer({
   const [content, setContent] = useState("");
   const [loading, setLoading] = useState(true);
   const [isRawView, setIsRawView] = useState(false);
+  const [collapsedHeadingIds, setCollapsedHeadingIds] = useState<Set<string>>(() => new Set());
   const [linkOpenError, setLinkOpenError] = useState<string | null>(null);
   const articleRef = useRef<HTMLElement>(null);
   const [prevFetchKey, setPrevFetchKey] = useState({ fileId, revision });
@@ -1771,6 +1813,22 @@ export function MarkdownViewer({
     };
   }, [fileId, revision]);
 
+  useEffect(() => {
+    setCollapsedHeadingIds(new Set());
+  }, [fileId, revision]);
+
+  const toggleHeadingCollapse = useCallback((headingId: string) => {
+    setCollapsedHeadingIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(headingId)) {
+        next.delete(headingId);
+      } else {
+        next.add(headingId);
+      }
+      return next;
+    });
+  }, []);
+
   const handleLinkClick = useCallback(
     async (e: React.MouseEvent<HTMLAnchorElement>, href: string, anchor: string | null) => {
       e.preventDefault();
@@ -1797,6 +1855,78 @@ export function MarkdownViewer({
   const components: Components = useMemo(
     () => ({
       pre: ({ children }) => <>{children}</>,
+      h1: ({ node: _node, children, id, className, ...props }) => (
+        <CollapsibleHeading
+          as="h1"
+          id={id}
+          className={className}
+          collapsed={typeof id === "string" && collapsedHeadingIds.has(id)}
+          onToggleCollapse={typeof id === "string" ? () => toggleHeadingCollapse(id) : undefined}
+          {...props}
+        >
+          {children}
+        </CollapsibleHeading>
+      ),
+      h2: ({ node: _node, children, id, className, ...props }) => (
+        <CollapsibleHeading
+          as="h2"
+          id={id}
+          className={className}
+          collapsed={typeof id === "string" && collapsedHeadingIds.has(id)}
+          onToggleCollapse={typeof id === "string" ? () => toggleHeadingCollapse(id) : undefined}
+          {...props}
+        >
+          {children}
+        </CollapsibleHeading>
+      ),
+      h3: ({ node: _node, children, id, className, ...props }) => (
+        <CollapsibleHeading
+          as="h3"
+          id={id}
+          className={className}
+          collapsed={typeof id === "string" && collapsedHeadingIds.has(id)}
+          onToggleCollapse={typeof id === "string" ? () => toggleHeadingCollapse(id) : undefined}
+          {...props}
+        >
+          {children}
+        </CollapsibleHeading>
+      ),
+      h4: ({ node: _node, children, id, className, ...props }) => (
+        <CollapsibleHeading
+          as="h4"
+          id={id}
+          className={className}
+          collapsed={typeof id === "string" && collapsedHeadingIds.has(id)}
+          onToggleCollapse={typeof id === "string" ? () => toggleHeadingCollapse(id) : undefined}
+          {...props}
+        >
+          {children}
+        </CollapsibleHeading>
+      ),
+      h5: ({ node: _node, children, id, className, ...props }) => (
+        <CollapsibleHeading
+          as="h5"
+          id={id}
+          className={className}
+          collapsed={typeof id === "string" && collapsedHeadingIds.has(id)}
+          onToggleCollapse={typeof id === "string" ? () => toggleHeadingCollapse(id) : undefined}
+          {...props}
+        >
+          {children}
+        </CollapsibleHeading>
+      ),
+      h6: ({ node: _node, children, id, className, ...props }) => (
+        <CollapsibleHeading
+          as="h6"
+          id={id}
+          className={className}
+          collapsed={typeof id === "string" && collapsedHeadingIds.has(id)}
+          onToggleCollapse={typeof id === "string" ? () => toggleHeadingCollapse(id) : undefined}
+          {...props}
+        >
+          {children}
+        </CollapsibleHeading>
+      ),
       code: ({ className, children, ...props }) => {
         const language = extractLanguage(className);
         const code = String(children).replace(/\n$/, "");
@@ -1861,7 +1991,7 @@ export function MarkdownViewer({
         }
       },
     }),
-    [fileId, handleLinkClick],
+    [collapsedHeadingIds, fileId, handleLinkClick, toggleHeadingCollapse],
   );
 
   const parsed = useMemo(
@@ -1889,6 +2019,46 @@ export function MarkdownViewer({
       </>
     );
   }, [content, isRawView, parsed, components, fileName]);
+
+  useEffect(() => {
+    const article = articleRef.current;
+    if (!article || loading || isRawView) return;
+
+    const resetHidden = () => {
+      const hiddenEls = article.querySelectorAll<HTMLElement>("[data-heading-collapsed-hidden='1']");
+      hiddenEls.forEach((el) => {
+        el.style.removeProperty("display");
+        el.removeAttribute("data-heading-collapsed-hidden");
+      });
+    };
+
+    resetHidden();
+    if (collapsedHeadingIds.size === 0) return;
+
+    const headingEls = Array.from(article.querySelectorAll<HTMLElement>("h1, h2, h3, h4, h5, h6"));
+
+    for (const headingEl of headingEls) {
+      if (!headingEl.id || !collapsedHeadingIds.has(headingEl.id)) continue;
+
+      const level = parseInt(headingEl.tagName.slice(1), 10);
+      let cursor = headingEl.nextElementSibling as HTMLElement | null;
+
+      while (cursor) {
+        if (/^H[1-6]$/.test(cursor.tagName)) {
+          const nextLevel = parseInt(cursor.tagName.slice(1), 10);
+          if (nextLevel <= level) break;
+        }
+
+        cursor.style.display = "none";
+        cursor.setAttribute("data-heading-collapsed-hidden", "1");
+        cursor = cursor.nextElementSibling as HTMLElement | null;
+      }
+    }
+
+    return () => {
+      resetHidden();
+    };
+  }, [collapsedHeadingIds, isRawView, loading, renderedContent]);
 
   const prevHeadingsKey = useRef("");
   useEffect(() => {

@@ -104,4 +104,55 @@ describe("MarkdownViewer link opening", () => {
         });
         expect(screen.queryByText(/^无法打开链接：/)).not.toBeInTheDocument();
     });
+
+    it("toggles section visibility when clicking headings", async () => {
+        vi.mocked(fetchFileContent).mockResolvedValue({
+            content: `# 第一章
+
+段落一
+
+## 子节
+
+段落二
+
+# 第二章
+
+段落三`,
+            baseDir: "/tmp",
+        });
+
+        render(
+            <MarkdownViewer
+                fileId="file-1"
+                fileName="README.md"
+                revision={0}
+                onFileOpened={() => { }}
+                onHeadingsChange={() => { }}
+                isTocOpen={false}
+                onTocToggle={() => { }}
+                onRemoveFile={() => { }}
+                isWide={false}
+            />,
+        );
+
+        const heading = await screen.findByRole("heading", { name: /第一章/ });
+        expect(await screen.findByText("段落一")).toBeVisible();
+        expect(await screen.findByText("段落二")).toBeVisible();
+        expect(await screen.findByRole("heading", { name: /第二章/ })).toBeVisible();
+
+        fireEvent.click(heading);
+
+        await waitFor(() => {
+            expect(screen.getByText("段落一")).not.toBeVisible();
+            expect(screen.getByText("段落二")).not.toBeVisible();
+            expect(screen.getByRole("heading", { name: /第二章/ })).toBeVisible();
+        });
+
+        fireEvent.click(screen.getByRole("heading", { name: /第一章/ }));
+
+        await waitFor(() => {
+            expect(screen.getByText("段落一")).toBeVisible();
+            expect(screen.getByText("段落二")).toBeVisible();
+        });
+    });
 });
