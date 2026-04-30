@@ -6,6 +6,7 @@ import {
     importHeadingsAsNotebookItems,
     indentNotebookItem,
     insertNotebookItemAfter,
+    moveNotebookItemBeforeById,
     moveNotebookItem,
     outdentNotebookItemsByIds,
     outdentNotebookItem,
@@ -142,5 +143,31 @@ describe("notebookOutline utils", () => {
         const removed = removeNotebookItemsByIds(base, new Set(["a", "c"]));
         expect(removed.items.map((item) => item.id)).toEqual(["b"]);
         expect(removed.focusIndex).toBe(0);
+    });
+
+    it("moves subtree before another item by id", () => {
+        const base = [
+            createNotebookOutlineItem({ id: "a", text: "A", level: 0 }),
+            createNotebookOutlineItem({ id: "a1", text: "A.1", level: 1 }),
+            createNotebookOutlineItem({ id: "b", text: "B", level: 0 }),
+            createNotebookOutlineItem({ id: "c", text: "C", level: 0 }),
+        ];
+
+        const moved = moveNotebookItemBeforeById(base, "c", "a");
+        expect(moved.items.map((item) => item.id)).toEqual(["c", "a", "a1", "b"]);
+        expect(moved.focusIndex).toBe(0);
+    });
+
+    it("does not move item into its own subtree", () => {
+        const base = [
+            createNotebookOutlineItem({ id: "a", text: "A", level: 0 }),
+            createNotebookOutlineItem({ id: "a1", text: "A.1", level: 1 }),
+            createNotebookOutlineItem({ id: "a2", text: "A.2", level: 2 }),
+            createNotebookOutlineItem({ id: "b", text: "B", level: 0 }),
+        ];
+
+        const moved = moveNotebookItemBeforeById(base, "a", "a2");
+        expect(moved.items.map((item) => item.id)).toEqual(["a", "a1", "a2", "b"]);
+        expect(moved.focusIndex).toBe(0);
     });
 });

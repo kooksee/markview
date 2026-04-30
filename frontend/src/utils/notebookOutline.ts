@@ -244,6 +244,47 @@ export function moveNotebookItem(
     };
 }
 
+export function moveNotebookItemBeforeById(
+    items: NotebookOutlineItem[],
+    draggedId: string,
+    targetId: string,
+): { items: NotebookOutlineItem[]; focusIndex: number } {
+    if (!draggedId || !targetId || draggedId === targetId) {
+        return { items, focusIndex: 0 };
+    }
+
+    const draggedIndex = items.findIndex((item) => item.id === draggedId);
+    const targetIndex = items.findIndex((item) => item.id === targetId);
+
+    if (draggedIndex === -1 || targetIndex === -1) {
+        return { items, focusIndex: Math.max(0, draggedIndex) };
+    }
+
+    const draggedEnd = getSubtreeEnd(items, draggedIndex);
+    // Prevent moving into itself/its descendants
+    if (targetIndex >= draggedIndex && targetIndex < draggedEnd) {
+        return { items, focusIndex: draggedIndex };
+    }
+
+    const draggedBlock = items.slice(draggedIndex, draggedEnd);
+    const remaining = [...items.slice(0, draggedIndex), ...items.slice(draggedEnd)];
+
+    const adjustedTargetIndex = targetIndex > draggedIndex
+        ? targetIndex - draggedBlock.length
+        : targetIndex;
+
+    const nextItems = [
+        ...remaining.slice(0, adjustedTargetIndex),
+        ...draggedBlock,
+        ...remaining.slice(adjustedTargetIndex),
+    ];
+
+    return {
+        items: nextItems,
+        focusIndex: Math.max(0, adjustedTargetIndex),
+    };
+}
+
 function normalizeSelectionIds(selected: NotebookSelectionInput): Set<string> {
     if (selected instanceof Set) return new Set(selected);
     return new Set(selected.filter((id) => typeof id === "string" && id.length > 0));

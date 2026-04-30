@@ -27,6 +27,7 @@ import { OutlineGraphView } from "./components/OutlineGraphView";
 import { OutlineGravityView } from "./components/OutlineGravityView";
 import { OutlineTreeView } from "./components/OutlineTreeView";
 import { OutlineNotebookPanel } from "./components/OutlineNotebookPanel";
+import { DocumentMindmapPanel } from "./components/DocumentMindmapPanel";
 import { isStaticMode } from "./utils/staticData";
 
 const WIDTH_STORAGE_KEY = "markview-layout-width";
@@ -368,12 +369,6 @@ export function App() {
 
   const handleFileSelect = useCallback((fileId: string) => {
     setPendingSearchJump(null);
-    setActiveFileId(fileId);
-  }, []);
-
-  const handleNotebookFileSelect = useCallback((fileId: string, group: string) => {
-    setPendingSearchJump(null);
-    setActiveGroup(group);
     setActiveFileId(fileId);
   }, []);
 
@@ -722,10 +717,9 @@ export function App() {
                     </div>
                     <div className="min-h-0 flex-1">
                       {notebookLeftTab === "mindmap" ? (
-                        <OutlineTreeView
-                          onClose={() => setShowGraph(false)}
-                          onSelectFile={handleNotebookFileSelect}
-                          embedded
+                        <DocumentMindmapPanel
+                          headings={headings}
+                          onNavigateHeading={handleHeadingClick}
                         />
                       ) : (
                         <OutlineNotebookPanel

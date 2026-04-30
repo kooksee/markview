@@ -28,7 +28,7 @@
 - <img src="images/icons/group.svg" width="16" height="16" alt="分组"> 文件分组管理
 - <img src="images/icons/toc.svg" width="16" height="16" alt="目录"> 文档目录面板
 - <img src="images/icons/view-flat.svg" width="16" height="16" alt="平铺"> 平铺 / <img src="images/icons/view-tree.svg" width="16" height="16" alt="树形"> 树形侧边栏（支持拖拽排序与文件搜索）
-- 大纲笔记模式（类幕布）：左侧思维导图/可编辑大纲切换，右侧文档联动阅读（支持折叠子项、Tab 缩进、Alt+↑/↓ 调整顺序、多选批量编辑）
+- 大纲笔记模式（类幕布）：左侧思维导图/大纲笔记均基于当前文档标题解析，右侧文档联动阅读（支持标题定位）
 - YAML 前置元数据展示（可折叠元数据区域）
 - MDX 支持（渲染 Markdown，去除 `import`/`export`，转义 JSX 标签）
 - <img src="images/icons/width-expand.svg" width="16" height="16" alt="宽布局"> 宽版 / <img src="images/icons/width-compress.svg" width="16" height="16" alt="窄布局"> 窄版阅读宽度切换
@@ -254,6 +254,7 @@ $ make build
 
 为了便于本地阅读和二次开发，仓库提供了以下中文文档：
 
+- [可视化快速上手](docs/quick-start-visual.md)
 - [设计文档](docs/design.md)
 - [架构文档](docs/architecture.md)
 - [Markdown 能力清单](docs/markdown-capabilities.md)
