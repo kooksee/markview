@@ -11,7 +11,7 @@ generate:
 	go generate ./internal/static/
 
 test:
-	cd frontend && pnpm install && pnpm run test:coverage
+	cd frontend && sh scripts/pnpm-install-safe.sh && pnpm run test:coverage
 	go test ./... -coverprofile=coverage.out -covermode=count -count=1
 
 build: generate
@@ -27,15 +27,15 @@ screenshot: build
 	cd frontend && pnpm run screenshots
 
 lint:
-	cd frontend && pnpm install && pnpm run lint
+	cd frontend && sh scripts/pnpm-install-safe.sh && pnpm run lint
 	golangci-lint run ./...
 	go vet -vettool=`which gostyle` -gostyle.config=$(PWD)/.gostyle.yml ./...
 
 fmt:
-	cd frontend && pnpm install && pnpm run fmt
+	cd frontend && sh scripts/pnpm-install-safe.sh && pnpm run fmt
 
 fmt-check:
-	cd frontend && pnpm install && pnpm run fmt:check
+	cd frontend && sh scripts/pnpm-install-safe.sh && pnpm run fmt:check
 
 depsdev:
 	go install github.com/Songmu/gocredits/cmd/gocredits@latest
