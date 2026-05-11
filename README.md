@@ -250,6 +250,29 @@ $ markview --status --json
 $ make build
 ```
 
+## Markdown PPT 演示（Marp）
+
+仓库内置了 `docs/slides/` 幻灯片模板与主题，可通过 Makefile 直接预览和导出：
+
+```console
+$ make slides-preview
+$ make slides-pdf
+$ make slides-pptx
+```
+
+默认使用：
+
+- `docs/slides/tech-talk-template.md`
+- `docs/slides/theme-markview.css`
+
+你也可以覆盖输入文件（示例）：
+
+```console
+$ make slides-pdf SLIDES_FILE=docs/slides/my-talk.md
+```
+
+更多模板说明见：`docs/slides/README.md`
+
 ## 中文文档
 
 为了便于本地阅读和二次开发，仓库提供了以下中文文档：

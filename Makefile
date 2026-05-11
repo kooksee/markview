@@ -2,10 +2,24 @@ PKG = github.com/kooksee/markview
 COMMIT = $(shell git rev-parse --short HEAD)
 
 BUILD_LDFLAGS = "-s -w -X $(PKG)/version.Revision=$(COMMIT)"
+MARP = pnpm dlx @marp-team/marp-cli
+SLIDES_FILE ?= docs/slides/tech-talk-template.md
+SLIDES_THEME ?= docs/slides/theme-markview.css
+SLIDES_PDF ?= docs/slides/tech-talk-template.pdf
+SLIDES_PPTX ?= docs/slides/tech-talk-template.pptx
 
 default: test
 
 ci: depsdev generate test
+
+slides-preview:
+	$(MARP) $(SLIDES_FILE) --theme-set $(SLIDES_THEME) --preview
+
+slides-pdf:
+	$(MARP) $(SLIDES_FILE) --theme-set $(SLIDES_THEME) --pdf -o $(SLIDES_PDF)
+
+slides-pptx:
+	$(MARP) $(SLIDES_FILE) --theme-set $(SLIDES_THEME) --pptx -o $(SLIDES_PPTX)
 
 generate:
 	go generate ./internal/static/
@@ -51,4 +65,4 @@ credits: depsdev generate
 prerelease_for_tagpr: credits
 	git add CHANGELOG.md CREDITS go.mod go.sum
 
-.PHONY: default ci generate test build dev screenshot lint fmt fmt-check depsdev credits prerelease_for_tagpr
+.PHONY: default ci generate test build dev screenshot lint fmt fmt-check depsdev credits prerelease_for_tagpr slides-preview slides-pdf slides-pptx

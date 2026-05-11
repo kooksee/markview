@@ -43,6 +43,51 @@ body,
   max-width: none;
 }
 
+.markdown-body.markdown-body--slides {
+  max-width: none;
+}
+
+.markdown-slide-shell {
+  display: flex;
+  justify-content: center;
+  padding: 8px 0 16px;
+}
+
+.markdown-slide-page {
+  width: min(1120px, 100%);
+  min-height: min(72vh, 740px);
+  min-height: min(72dvh, 740px);
+  aspect-ratio: 16 / 9;
+  overflow: auto;
+  border: 1px solid var(--color-gh-border);
+  border-radius: 12px;
+  background: var(--color-gh-bg);
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.08);
+  padding: clamp(20px, 3vw, 42px);
+}
+
+.markdown-body--slides .markdown-slide-page h1 {
+  font-size: clamp(2rem, 4vw, 3.2rem);
+}
+
+.markdown-body--slides .markdown-slide-page h2 {
+  font-size: clamp(1.5rem, 2.8vw, 2.4rem);
+}
+
+.markdown-body--slides .markdown-slide-page h3 {
+  font-size: clamp(1.2rem, 2.2vw, 1.8rem);
+}
+
+.markdown-body--slides .markdown-slide-page p,
+.markdown-body--slides .markdown-slide-page li {
+  font-size: clamp(1rem, 1.35vw, 1.25rem);
+  line-height: 1.6;
+}
+
+[data-theme="dark"] .markdown-slide-page {
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.35);
+}
+
 .markdown-body .mermaid-block .mermaid-render svg {
   max-width: 100%;
   height: auto;
