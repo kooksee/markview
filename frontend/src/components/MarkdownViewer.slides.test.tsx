@@ -34,8 +34,15 @@ vi.mock("./BacklinksPanel", () => ({
 }));
 
 describe("MarkdownViewer slides mode", () => {
+    let requestFullscreenMock: ReturnType<typeof vi.fn>;
+
     beforeEach(() => {
         vi.clearAllMocks();
+        requestFullscreenMock = vi.fn().mockResolvedValue(undefined);
+        Object.defineProperty(HTMLElement.prototype, "requestFullscreen", {
+            configurable: true,
+            value: requestFullscreenMock,
+        });
         vi.mocked(fetchFileContent).mockResolvedValue({
             content: `# 封面\n\n第一页内容\n\n---\n\n# 第二页\n\n第二页内容`,
             baseDir: "/tmp",
@@ -111,5 +118,29 @@ describe("MarkdownViewer slides mode", () => {
         await waitFor(() => {
             expect(screen.getByText("第一页内容")).toBeInTheDocument();
         });
+    });
+
+    it("enters fullscreen when clicking fullscreen button", async () => {
+        const user = userEvent.setup();
+
+        render(
+            <MarkdownViewer
+                fileId="file-1"
+                fileName="README.md"
+                revision={0}
+                onFileOpened={() => { }}
+                onHeadingsChange={() => { }}
+                isTocOpen={false}
+                onTocToggle={() => { }}
+                onRemoveFile={() => { }}
+                isWide={false}
+            />,
+        );
+
+        await screen.findByText("第一页内容");
+        await user.click(screen.getByRole("button", { name: "Slides" }));
+
+        await user.click(screen.getByRole("button", { name: "全屏展示" }));
+        expect(requestFullscreenMock).toHaveBeenCalledOnce();
     });
 });

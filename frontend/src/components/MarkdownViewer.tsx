@@ -1830,10 +1830,12 @@ export function MarkdownViewer({
   const [loading, setLoading] = useState(true);
   const [isRawView, setIsRawView] = useState(false);
   const [isSlidesView, setIsSlidesView] = useState(false);
+  const [isSlidesFullscreen, setIsSlidesFullscreen] = useState(false);
   const [slideIndex, setSlideIndex] = useState(0);
   const [collapsedHeadingIds, setCollapsedHeadingIds] = useState<Set<string>>(() => new Set());
   const [linkOpenError, setLinkOpenError] = useState<string | null>(null);
   const articleRef = useRef<HTMLElement>(null);
+  const slideShellRef = useRef<HTMLDivElement>(null);
   const [prevFetchKey, setPrevFetchKey] = useState({ fileId, revision });
 
   if (fileId !== prevFetchKey.fileId || revision !== prevFetchKey.revision) {
@@ -2045,6 +2047,39 @@ export function MarkdownViewer({
     setSlideIndex(Math.max(0, slides.length - 1));
   }, [slides.length]);
 
+  const toggleSlidesFullscreen = useCallback(async () => {
+    const shell = slideShellRef.current;
+    if (!shell) return;
+
+    try {
+      if (document.fullscreenElement === shell) {
+        await document.exitFullscreen?.();
+        return;
+      }
+      await shell.requestFullscreen?.();
+    } catch {
+      // Fullscreen may be blocked by browser policies
+    }
+  }, []);
+
+  useEffect(() => {
+    const onFullscreenChange = () => {
+      setIsSlidesFullscreen(document.fullscreenElement === slideShellRef.current);
+    };
+
+    document.addEventListener("fullscreenchange", onFullscreenChange);
+    return () => {
+      document.removeEventListener("fullscreenchange", onFullscreenChange);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (isSlidesView) return;
+    const shell = slideShellRef.current;
+    if (!shell || document.fullscreenElement !== shell) return;
+    void document.exitFullscreen?.();
+  }, [isSlidesView]);
+
   const renderedContent = useMemo(() => {
     if (isRawView) {
       return <RawView content={content} />;
@@ -2053,7 +2088,20 @@ export function MarkdownViewer({
     if (isSlidesView) {
       const currentSlide = slides[slideIndex] ?? "";
       return (
-        <div className="markdown-slide-shell">
+        <div
+          ref={slideShellRef}
+          className={`markdown-slide-shell${isSlidesFullscreen ? " markdown-slide-shell--fullscreen" : ""}`}
+          data-testid="markdown-slide-shell"
+        >
+          <button
+            type="button"
+            className="markdown-slide-fullscreen-btn"
+            onClick={() => void toggleSlidesFullscreen()}
+            title={isSlidesFullscreen ? "退出全屏（F / Esc）" : "全屏展示（F）"}
+            aria-label={isSlidesFullscreen ? "退出全屏" : "全屏展示"}
+          >
+            {isSlidesFullscreen ? "退出全屏" : "全屏展示"}
+          </button>
           <section className="markdown-slide-page">
             <Markdown
               remarkPlugins={[remarkGfm, remarkMath, remarkBreaks, remarkGemoji]}
@@ -2079,7 +2127,18 @@ export function MarkdownViewer({
         </Markdown>
       </>
     );
-  }, [components, content, isRawView, isSlidesView, parsed, slideIndex, slides, transformedMarkdown]);
+  }, [
+    components,
+    content,
+    isRawView,
+    isSlidesFullscreen,
+    isSlidesView,
+    parsed,
+    slideIndex,
+    slides,
+    toggleSlidesFullscreen,
+    transformedMarkdown,
+  ]);
 
   useEffect(() => {
     const article = articleRef.current;
@@ -2238,6 +2297,11 @@ export function MarkdownViewer({
       if (event.key === "Escape") {
         event.preventDefault();
         setIsSlidesView(false);
+        return;
+      }
+      if (event.key === "f" || event.key === "F") {
+        event.preventDefault();
+        void toggleSlidesFullscreen();
       }
     };
 
@@ -2245,7 +2309,7 @@ export function MarkdownViewer({
     return () => {
       window.removeEventListener("keydown", onKeyDown);
     };
-  }, [goFirstSlide, goLastSlide, goNextSlide, goPrevSlide, isSlidesView, loading]);
+  }, [goFirstSlide, goLastSlide, goNextSlide, goPrevSlide, isSlidesView, loading, toggleSlidesFullscreen]);
 
   const handleRawToggle = useCallback(() => {
     setIsRawView((current) => {
@@ -2295,7 +2359,9 @@ export function MarkdownViewer({
         )}
         {isSlidesView && (
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-md border border-gh-border bg-gh-bg-secondary px-3 py-2 text-xs text-gh-text-secondary">
-            <span>PPT 模式 · 第 {currentSlideLabel}/{Math.max(slides.length, 1)} 页</span>
+            <span>
+              PPT 模式 · 第 {currentSlideLabel}/{Math.max(slides.length, 1)} 页 · 快捷键 F 全屏
+            </span>
             <div className="flex items-center gap-1">
               <button
                 type="button"

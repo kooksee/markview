@@ -48,9 +48,28 @@ body,
 }
 
 .markdown-slide-shell {
+  position: relative;
   display: flex;
   justify-content: center;
   padding: 8px 0 16px;
+}
+
+.markdown-slide-fullscreen-btn {
+  position: absolute;
+  right: 8px;
+  top: 8px;
+  z-index: 2;
+  border: 1px solid var(--color-gh-border);
+  border-radius: 8px;
+  background: color-mix(in oklab, var(--color-gh-bg-secondary) 92%, transparent);
+  color: var(--color-gh-text-secondary);
+  font-size: 12px;
+  padding: 4px 10px;
+  cursor: pointer;
+}
+
+.markdown-slide-fullscreen-btn:hover {
+  background: var(--color-gh-bg-hover);
 }
 
 .markdown-slide-page {
@@ -86,6 +105,27 @@ body,
 
 [data-theme="dark"] .markdown-slide-page {
   box-shadow: 0 14px 34px rgba(0, 0, 0, 0.35);
+}
+
+.markdown-slide-shell:fullscreen {
+  width: 100%;
+  height: 100%;
+  padding: min(2.4vw, 20px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(circle at top, #1f2937 0%, #0b1020 62%);
+}
+
+.markdown-slide-shell:fullscreen .markdown-slide-page {
+  width: min(96vw, 1600px);
+  height: min(96vh, 920px);
+  max-height: none;
+  border-radius: 14px;
+}
+
+.markdown-slide-shell:fullscreen::backdrop {
+  background: #0b1020;
 }
 
 .markdown-body .mermaid-block .mermaid-render svg {
