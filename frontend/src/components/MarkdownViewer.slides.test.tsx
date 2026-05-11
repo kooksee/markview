@@ -35,10 +35,28 @@ vi.mock("./BacklinksPanel", () => ({
 
 describe("MarkdownViewer slides mode", () => {
     let requestFullscreenMock: ReturnType<typeof vi.fn>;
+    let exitFullscreenMock: ReturnType<typeof vi.fn>;
+    let fullscreenElement: Element | null;
 
     beforeEach(() => {
         vi.clearAllMocks();
-        requestFullscreenMock = vi.fn().mockResolvedValue(undefined);
+        fullscreenElement = null;
+        Object.defineProperty(document, "fullscreenElement", {
+            configurable: true,
+            get: () => fullscreenElement,
+        });
+        requestFullscreenMock = vi.fn().mockImplementation(function (this: HTMLElement) {
+            fullscreenElement = this;
+            return Promise.resolve();
+        });
+        exitFullscreenMock = vi.fn().mockImplementation(() => {
+            fullscreenElement = null;
+            return Promise.resolve();
+        });
+        Object.defineProperty(document, "exitFullscreen", {
+            configurable: true,
+            value: exitFullscreenMock,
+        });
         Object.defineProperty(HTMLElement.prototype, "requestFullscreen", {
             configurable: true,
             value: requestFullscreenMock,
@@ -143,4 +161,94 @@ describe("MarkdownViewer slides mode", () => {
         await user.click(screen.getByRole("button", { name: "全屏展示" }));
         expect(requestFullscreenMock).toHaveBeenCalledOnce();
     });
+
+    it("goes to next slide when clicking slide body", async () => {
+        const user = userEvent.setup();
+
+        render(
+            <MarkdownViewer
+                fileId="file-1"
+                fileName="README.md"
+                revision={0}
+                onFileOpened={() => { }}
+                onHeadingsChange={() => { }}
+                isTocOpen={false}
+                onTocToggle={() => { }}
+                onRemoveFile={() => { }}
+                isWide={false}
+            />,
+        );
+
+        await screen.findByText("第一页内容");
+        await user.click(screen.getByRole("button", { name: "Slides" }));
+
+        const slidePage = document.querySelector(".markdown-slide-page") as HTMLElement;
+        expect(slidePage).toBeTruthy();
+        await user.click(slidePage);
+
+        await waitFor(() => {
+            expect(screen.getByText("第二页内容")).toBeInTheDocument();
+        });
+    });
+
+    it("exits fullscreen before leaving slides on Escape", async () => {
+        const user = userEvent.setup();
+
+        render(
+            <MarkdownViewer
+                fileId="file-1"
+                fileName="README.md"
+                revision={0}
+                onFileOpened={() => { }}
+                onHeadingsChange={() => { }}
+                isTocOpen={false}
+                onTocToggle={() => { }}
+                onRemoveFile={() => { }}
+                isWide={false}
+            />,
+        );
+
+        await screen.findByText("第一页内容");
+        await user.click(screen.getByRole("button", { name: "Slides" }));
+        await user.click(screen.getByRole("button", { name: "全屏展示" }));
+        expect(requestFullscreenMock).toHaveBeenCalledOnce();
+
+        fireEvent.keyDown(window, { key: "Escape" });
+
+        expect(exitFullscreenMock).toHaveBeenCalledOnce();
+        expect(screen.getByText(/PPT 模式/)).toBeInTheDocument();
+    });
+
+    it("auto-hides overlay controls in fullscreen after inactivity", async () => {
+        const user = userEvent.setup();
+
+        render(
+            <MarkdownViewer
+                fileId="file-1"
+                fileName="README.md"
+                revision={0}
+                onFileOpened={() => { }}
+                onHeadingsChange={() => { }}
+                isTocOpen={false}
+                onTocToggle={() => { }}
+                onRemoveFile={() => { }}
+                isWide={false}
+            />,
+        );
+
+        await screen.findByText("第一页内容");
+        await user.click(screen.getByRole("button", { name: "Slides" }));
+        await user.click(screen.getByRole("button", { name: "全屏展示" }));
+        document.dispatchEvent(new Event("fullscreenchange"));
+
+        const shell = screen.getByTestId("markdown-slide-shell");
+        expect(shell.className).not.toContain("markdown-slide-shell--overlay-hidden");
+
+        await waitFor(() => {
+            expect(shell.className).toContain("markdown-slide-shell--overlay-hidden");
+        }, {
+            timeout: 4500,
+        });
+    });
+
 });

@@ -1831,11 +1831,14 @@ export function MarkdownViewer({
   const [isRawView, setIsRawView] = useState(false);
   const [isSlidesView, setIsSlidesView] = useState(false);
   const [isSlidesFullscreen, setIsSlidesFullscreen] = useState(false);
+  const [isSlidesOverlayVisible, setIsSlidesOverlayVisible] = useState(true);
+  const [isSlidesOverlayPinned, setIsSlidesOverlayPinned] = useState(false);
   const [slideIndex, setSlideIndex] = useState(0);
   const [collapsedHeadingIds, setCollapsedHeadingIds] = useState<Set<string>>(() => new Set());
   const [linkOpenError, setLinkOpenError] = useState<string | null>(null);
   const articleRef = useRef<HTMLElement>(null);
   const slideShellRef = useRef<HTMLDivElement>(null);
+  const slidesOverlayTimerRef = useRef<number | null>(null);
   const [prevFetchKey, setPrevFetchKey] = useState({ fileId, revision });
 
   if (fileId !== prevFetchKey.fileId || revision !== prevFetchKey.revision) {
@@ -2047,6 +2050,18 @@ export function MarkdownViewer({
     setSlideIndex(Math.max(0, slides.length - 1));
   }, [slides.length]);
 
+  const handleSlidePageClick = useCallback(
+    (event: React.MouseEvent<HTMLElement>) => {
+      const target = event.target as HTMLElement | null;
+      if (!target) return;
+      if (target.closest("a,button,input,textarea,select,label,summary,[role='button']")) {
+        return;
+      }
+      goNextSlide();
+    },
+    [goNextSlide],
+  );
+
   const toggleSlidesFullscreen = useCallback(async () => {
     const shell = slideShellRef.current;
     if (!shell) return;
@@ -2061,6 +2076,28 @@ export function MarkdownViewer({
       // Fullscreen may be blocked by browser policies
     }
   }, []);
+
+  const clearSlidesOverlayTimer = useCallback(() => {
+    if (slidesOverlayTimerRef.current !== null) {
+      window.clearTimeout(slidesOverlayTimerRef.current);
+      slidesOverlayTimerRef.current = null;
+    }
+  }, []);
+
+  const scheduleSlidesOverlayHide = useCallback(() => {
+    clearSlidesOverlayTimer();
+    if (!isSlidesView || !isSlidesFullscreen || isSlidesOverlayPinned) return;
+
+    slidesOverlayTimerRef.current = window.setTimeout(() => {
+      setIsSlidesOverlayVisible(false);
+    }, 2200);
+  }, [clearSlidesOverlayTimer, isSlidesFullscreen, isSlidesOverlayPinned, isSlidesView]);
+
+  const revealSlidesOverlay = useCallback(() => {
+    if (!isSlidesView || !isSlidesFullscreen) return;
+    setIsSlidesOverlayVisible(true);
+    scheduleSlidesOverlayHide();
+  }, [isSlidesFullscreen, isSlidesView, scheduleSlidesOverlayHide]);
 
   useEffect(() => {
     const onFullscreenChange = () => {
@@ -2080,6 +2117,26 @@ export function MarkdownViewer({
     void document.exitFullscreen?.();
   }, [isSlidesView]);
 
+  useEffect(() => {
+    if (!isSlidesView || !isSlidesFullscreen) {
+      setIsSlidesOverlayVisible(true);
+      setIsSlidesOverlayPinned(false);
+      clearSlidesOverlayTimer();
+      return;
+    }
+
+    setIsSlidesOverlayVisible(true);
+    scheduleSlidesOverlayHide();
+
+    return () => {
+      clearSlidesOverlayTimer();
+    };
+  }, [clearSlidesOverlayTimer, isSlidesFullscreen, isSlidesView, scheduleSlidesOverlayHide]);
+
+  const handleSlidesOverlayActivity = useCallback(() => {
+    revealSlidesOverlay();
+  }, [revealSlidesOverlay]);
+
   const renderedContent = useMemo(() => {
     if (isRawView) {
       return <RawView content={content} />;
@@ -2090,8 +2147,10 @@ export function MarkdownViewer({
       return (
         <div
           ref={slideShellRef}
-          className={`markdown-slide-shell${isSlidesFullscreen ? " markdown-slide-shell--fullscreen" : ""}`}
+          className={`markdown-slide-shell${isSlidesFullscreen ? " markdown-slide-shell--fullscreen" : ""}${isSlidesFullscreen && !isSlidesOverlayVisible ? " markdown-slide-shell--overlay-hidden" : ""}`}
           data-testid="markdown-slide-shell"
+          onMouseMove={handleSlidesOverlayActivity}
+          onTouchStart={handleSlidesOverlayActivity}
         >
           <button
             type="button"
@@ -2102,7 +2161,11 @@ export function MarkdownViewer({
           >
             {isSlidesFullscreen ? "退出全屏" : "全屏展示"}
           </button>
-          <section className="markdown-slide-page">
+          <section
+            className="markdown-slide-page"
+            onClick={handleSlidePageClick}
+            title="点击空白区域可进入下一页"
+          >
             <Markdown
               remarkPlugins={[remarkGfm, remarkMath, remarkBreaks, remarkGemoji]}
               rehypePlugins={[rehypeRaw, rehypeGithubAlerts, rehypeSlug, rehypeKatex]}
@@ -2111,6 +2174,9 @@ export function MarkdownViewer({
               {currentSlide}
             </Markdown>
           </section>
+          <div className="markdown-slide-help-badge" aria-hidden="true">
+            ←/→ 翻页 · 空白点击下一页 · F 全屏 · Esc 退出 · {isSlidesOverlayPinned ? "H 取消固定" : "H 固定控件"}
+          </div>
         </div>
       );
     }
@@ -2132,7 +2198,11 @@ export function MarkdownViewer({
     content,
     isRawView,
     isSlidesFullscreen,
+    isSlidesOverlayPinned,
+    isSlidesOverlayVisible,
     isSlidesView,
+    handleSlidesOverlayActivity,
+    handleSlidePageClick,
     parsed,
     slideIndex,
     slides,
@@ -2274,6 +2344,10 @@ export function MarkdownViewer({
         return;
       }
 
+      if (isSlidesFullscreen) {
+        revealSlidesOverlay();
+      }
+
       if (["ArrowRight", "PageDown", " ", "Enter"].includes(event.key)) {
         event.preventDefault();
         goNextSlide();
@@ -2296,12 +2370,30 @@ export function MarkdownViewer({
       }
       if (event.key === "Escape") {
         event.preventDefault();
+        if (document.fullscreenElement === slideShellRef.current) {
+          void document.exitFullscreen?.();
+          return;
+        }
         setIsSlidesView(false);
         return;
       }
       if (event.key === "f" || event.key === "F") {
         event.preventDefault();
         void toggleSlidesFullscreen();
+        return;
+      }
+      if (event.key === "h" || event.key === "H") {
+        event.preventDefault();
+        setIsSlidesOverlayPinned((current) => {
+          const next = !current;
+          if (next) {
+            clearSlidesOverlayTimer();
+            setIsSlidesOverlayVisible(true);
+          } else {
+            scheduleSlidesOverlayHide();
+          }
+          return next;
+        });
       }
     };
 
@@ -2309,7 +2401,19 @@ export function MarkdownViewer({
     return () => {
       window.removeEventListener("keydown", onKeyDown);
     };
-  }, [goFirstSlide, goLastSlide, goNextSlide, goPrevSlide, isSlidesView, loading, toggleSlidesFullscreen]);
+  }, [
+    clearSlidesOverlayTimer,
+    goFirstSlide,
+    goLastSlide,
+    goNextSlide,
+    goPrevSlide,
+    isSlidesFullscreen,
+    isSlidesView,
+    loading,
+    revealSlidesOverlay,
+    scheduleSlidesOverlayHide,
+    toggleSlidesFullscreen,
+  ]);
 
   const handleRawToggle = useCallback(() => {
     setIsRawView((current) => {
